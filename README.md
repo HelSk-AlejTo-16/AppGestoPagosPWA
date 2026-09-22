@@ -61,7 +61,7 @@ Propiedades relevantes:
 | `spring.data.mongodb.uri` | URI de MongoDB | `mongodb://localhost:27017/EnviromentProject` |
 | `gestopago.auth.url` | URL base de GestoPago | `https://gestopago.portalventas.net` |
 | `gestopago.auth.refresh-rate-ms` | Frecuencia de renovación del token | `3600000` ms |
-| `gestopago.sync.cron` | Cron de sincronización del catálogo | `0 * * * * ?` |
+| `gestopago.sync.cron` | Cron de sincronización del catálogo | `0 0 0 * * ?` |
 | `spring.cloud.openfeign.client.config.default.connect-timeout` | Timeout de conexión | `3000` ms |
 | `spring.cloud.openfeign.client.config.default.read-timeout` | Timeout de lectura | `5000` ms |
 
