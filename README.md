@@ -171,7 +171,7 @@ Los errores de integración se responden con HTTP y códigos de aplicación espe
 
 ### Sincronización del catálogo
 
-`GestoPagoCatalogSyncTask` consulta `getProductList` con el token activo y persiste el catálogo en PostgreSQL y MongoDB. Por defecto se ejecuta cada minuto (`0 * * * * ?`).
+`GestoPagoCatalogSyncTask` consulta `getProductList` con el token activo y persiste el catálogo en PostgreSQL y MongoDB. Por defecto se ejecuta cada media noche (00:00) (`0 0 0 * * ?`).
 
 Antes de actualizar:
 
