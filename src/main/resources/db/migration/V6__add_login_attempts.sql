@@ -1,0 +1,3 @@
+ALTER TABLE usuarios ADD COLUMN intentos_fallidos INT DEFAULT 0 NOT NULL;
+ALTER TABLE usuarios ADD COLUMN fecha_bloqueo TIMESTAMP WITH TIME ZONE;
+
