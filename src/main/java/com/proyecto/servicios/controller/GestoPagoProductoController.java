@@ -19,7 +19,7 @@ public class GestoPagoProductoController {
 
     @GetMapping
     public ResponseEntity<GestoPagoProductResponse> listarProductos() {
-        // Retornamos el objeto DTO. ¡Spring Boot lo convierte a JSON automáticamente!
+        
         return ResponseEntity.ok(productService.obtenerProductos());
     }
 }

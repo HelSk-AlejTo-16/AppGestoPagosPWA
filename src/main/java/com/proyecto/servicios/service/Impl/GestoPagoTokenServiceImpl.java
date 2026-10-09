@@ -8,7 +8,6 @@ import com.proyecto.servicios.repositorys.gestopago.GestoPagoTokenRepository;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -29,8 +28,10 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
 
     @Value("${gestopago.auth.password}")
     private String password;
+
     @Value("${gestopago.auth.token-estatico:}")
     private String tokenRespaldo;
+
     public GestoPagoTokenServiceImpl(GestoPagoAuthClient gestoPagoAuthClient,
                                      GestoPagoTokenRepository tokenRepository,
                                      GestoPagoTokenMapper tokenMapper) {
@@ -40,7 +41,6 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     }
 
     @Override
-    @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 0)
     public void renovarToken() {
         log.info("Renovando token GestoPago para distribuidor={}", idDistribuidor);
         try {
@@ -70,7 +70,7 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
             log.info("Token GestoPago renovado correctamente");
 
         } catch (Exception e) {
-            log.error("Error al renovar token GestoPago: {}", e.getMessage(), e);
+            log.error("No se pudo renovar el token GestoPago ({}).", e.getClass().getSimpleName());
         }
     }
 

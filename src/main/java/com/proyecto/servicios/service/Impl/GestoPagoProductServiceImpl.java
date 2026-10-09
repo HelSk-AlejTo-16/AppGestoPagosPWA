@@ -135,7 +135,8 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
                     e.getClass().getSimpleName());
             throw e;
         } catch (Exception e) {
-            log.error("Fallo crítico inesperado al consultar GestoPago", e);
+            log.error("Fallo crítico inesperado al consultar GestoPago ({})",
+                    e.getClass().getSimpleName());
             throw new CatalogUnavailableException(
                     "El servicio de catálogo de productos no está disponible temporalmente. Intente más tarde.");
         }

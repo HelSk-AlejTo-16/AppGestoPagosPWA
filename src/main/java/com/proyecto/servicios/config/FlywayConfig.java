@@ -30,8 +30,6 @@ public class FlywayConfig {
                 .locations(locations)
                 .table(historyTable)
                 .schemas(schema)
-                .baselineOnMigrate(true)
-                .baselineVersion("0")
                 .load();
         flyway.migrate();
         return flyway;

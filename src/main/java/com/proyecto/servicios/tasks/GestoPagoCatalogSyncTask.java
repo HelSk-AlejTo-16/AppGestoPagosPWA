@@ -14,6 +14,7 @@ import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.Unmarshaller;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "gestopago.sync", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class GestoPagoCatalogSyncTask {
 
     private final GestoPagoProductClient productClient;
@@ -105,7 +107,7 @@ public class GestoPagoCatalogSyncTask {
         } catch (SuspectedAnomalyException sae) {
             log.error("¡ALERTA DE ANOMALÍA! {}", sae.getMessage());
         } catch (Exception e) {
-            log.error("Error crítico durante la sincronización del catálogo de GestoPago: {}", e.getMessage(), e);
+            log.error("Falló la sincronización del catálogo GestoPago ({})", e.getClass().getSimpleName());
         }
     }
 

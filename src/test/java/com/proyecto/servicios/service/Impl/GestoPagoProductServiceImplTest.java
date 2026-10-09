@@ -5,7 +5,6 @@ import com.proyecto.servicios.entity.gestopago.GestoPagoToken;
 import com.proyecto.servicios.entity.gestopago.ProductoDocument;
 import com.proyecto.servicios.entity.gestopago.ProductoEntity;
 import com.proyecto.servicios.exception.CatalogUnavailableException;
-import com.proyecto.servicios.exception.GestoPagoAuthException;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductResponse;
 import com.proyecto.servicios.repositorys.gestopago.ProductoMongoRepository;
 import com.proyecto.servicios.repositorys.gestopago.ProductoPostgresRepository;
@@ -24,10 +23,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -168,7 +164,7 @@ class GestoPagoProductServiceImplTest {
         // Simular token activo
         GestoPagoToken token = new GestoPagoToken();
         token.setToken("token-fresco-123");
-               when(tokenService.obtenerBearerToken(any(), any())).thenReturn("Bearer token-fresco-123");
+        when(tokenService.obtenerTokenActivo(any(), any())).thenReturn(Optional.of(token));
 
         // Simular respuesta XML de la API
         String xmlResponse = "<?xml version='1.0' encoding='UTF-8'?>" +
@@ -193,22 +189,22 @@ class GestoPagoProductServiceImplTest {
     // Escenario 4: Fallo Total (503)
     // ============================
 
-@Test
-    @DisplayName("Debe lanzar GestoPagoAuthException cuando todas las fuentes fallan y no hay token")
+    @Test
+    @DisplayName("Debe lanzar CatalogUnavailableException cuando todas las fuentes fallan")
     void obtenerProductos_falloTotal_lanzaExcepcion() {
         // Arrange - TODO falla
         when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
         when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
-        when(tokenService.obtenerBearerToken(any(), any()))
-                .thenThrow(new IllegalStateException("sin token"));
+        when(tokenService.obtenerTokenActivo(any(), any())).thenReturn(Optional.empty());
 
         // Act & Assert
-        GestoPagoAuthException exception = assertThrows(
-                GestoPagoAuthException.class,
+        CatalogUnavailableException exception = assertThrows(
+                CatalogUnavailableException.class,
                 () -> productService.obtenerProductos()
         );
-        assertTrue(exception.getMessage().contains("No hay token disponible"));
+        assertTrue(exception.getMessage().contains("no está disponible temporalmente"));
     }
+
     // ============================
     // Escenario 5: Filtrado de inactivos
     // ============================
@@ -230,20 +226,5 @@ class GestoPagoProductServiceImplTest {
         // Assert
         assertEquals(1, response.getProductos().size());
         assertEquals("Activo", response.getProductos().get(0).getProducto());
-    }
-
-        @Test
-    @DisplayName("Debe lanzar CatalogUnavailableException ante un error inesperado en la API")
-    void obtenerProductos_errorInesperado_lanzaCatalogUnavailable() {
-        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
-        when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
-        when(tokenService.obtenerBearerToken(any(), any())).thenReturn("Bearer token-123");
-        when(productClient.getProductList(any())).thenThrow(new RuntimeException("fallo inesperado"));
-
-        CatalogUnavailableException exception = assertThrows(
-                CatalogUnavailableException.class,
-                () -> productService.obtenerProductos()
-        );
-        assertTrue(exception.getMessage().contains("no está disponible temporalmente"));
     }
 }

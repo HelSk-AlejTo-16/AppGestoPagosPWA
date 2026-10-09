@@ -1,11 +1,20 @@
 package com.proyecto.servicios.exception;
 
 import com.proyecto.servicios.model.GenericResponse;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.security.access.AccessDeniedException;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import jakarta.validation.ConstraintViolationException;
 
 @Slf4j
 @ControllerAdvice
@@ -47,6 +56,60 @@ public class GlobalExceptionHandler {
         // El detalle solo va al log; al cliente no se le expone información interna.
         log.error("Error no controlado", ex);
         return build(500, "Error interno del servidor. Contacte al administrador.", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<GenericResponse> handleValidation(MethodArgumentNotValidException ex) {
+        String mensaje = ex.getBindingResult().getFieldErrors().stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .findFirst()
+                .orElse("La información enviada no es válida.");
+        return build(400, mensaje, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(BusinessConflictException.class)
+    public ResponseEntity<GenericResponse> handleConflict(BusinessConflictException ex) {
+        return build(409, ex.getCodigo() + ": " + ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<GenericResponse> handleDataConflict(DataIntegrityViolationException ex) {
+        log.warn("Una restricción de persistencia rechazó la solicitud.");
+        return build(409, "Los datos entran en conflicto con un registro existente.", HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<GenericResponse> handleNotFound(RecursoNoEncontradoException ex) {
+        return build(404, ex.getCodigo() + ": " + ex.getMessage(), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(AccesoNoAutorizadoException.class)
+    public ResponseEntity<GenericResponse> handleAuthenticationFailure(AccesoNoAutorizadoException ex) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatus());
+        return build(ex.getStatus(), ex.getCodigo() + ": " + ex.getMessage(), status);
+    }
+
+    @ExceptionHandler(ErrorValidacionException.class)
+    public ResponseEntity<GenericResponse> handleBusinessValidation(ErrorValidacionException ex) {
+        return build(400, ex.getMessage(), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<GenericResponse> handleAccessDenied(AccessDeniedException ex) {
+        return build(403, "No tiene permiso para acceder a este recurso.", HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler({
+            IllegalArgumentException.class,
+            HttpMessageNotReadableException.class,
+            MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class,
+            ConstraintViolationException.class,
+            HandlerMethodValidationException.class
+    })
+    public ResponseEntity<GenericResponse> handleBadRequest(Exception ex) {
+        String mensaje = ex instanceof IllegalArgumentException ? ex.getMessage() : "La solicitud está incompleta o mal formada.";
+        return build(400, mensaje, HttpStatus.BAD_REQUEST);
     }
 
     private ResponseEntity<GenericResponse> build(int codigo, String mensaje, HttpStatus status) {
