@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: app-gesto-pagos
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: render
+      - key: DB_HOST
+        fromDatabase:
+          name: app-gesto-pagos-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: app-gesto-pagos-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: app-gesto-pagos-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: app-gesto-pagos-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: app-gesto-pagos-db
+          property: password
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+
+databases:
+  - name: app-gesto-pagos-db
+    databaseName: appgestopagos
+    user: appgestopagos
+    plan: free
+    region: oregon
