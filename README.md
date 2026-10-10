@@ -4,11 +4,12 @@ API REST con Spring Boot, PostgreSQL, JPA, BCrypt y JWT.
 
 ## Configuración
 
-Configura `spring.datasource.url`, `spring.datasource.username` y
-`spring.datasource.password` para PostgreSQL. Antes de iniciar la aplicación,
-define `JWT_SECRET` con al menos 32 bytes aleatorios. También se acepta una
-clave codificada en Base64 con el prefijo `base64:`. El token dura una hora por
-defecto (`app.jwt.expiration-ms`).
+La conexión PostgreSQL se construye con `DB_HOST`, `DB_PORT`, `DB_NAME`,
+`DB_USERNAME` y `DB_PASSWORD`; localmente tienen valores por defecto excepto
+la contraseña. MongoDB se configura con `MONGODB_URI`. Antes de iniciar la
+aplicación, define `JWT_SECRET` con al menos 32 bytes aleatorios. También se
+acepta una clave codificada en Base64 con el prefijo `base64:`. El token dura
+una hora por defecto (`app.jwt.expiration-ms`).
 
 En PowerShell puedes generar una clave aleatoria temporal y arrancar la
 aplicación desde la misma terminal:
@@ -93,3 +94,34 @@ su información asociada, una cuenta activa y el usuario con contraseña BCrypt.
   flujo, lo que reactiva sus cuentas conforme a la regla del negocio.
 
 Swagger UI está disponible en `/swagger-ui/index.html`.
+
+## Despliegue académico en Render con Docker
+
+El repositorio incluye un `Dockerfile` multi-stage para compilar y ejecutar la
+aplicación con Java 17, un `.dockerignore` y un `render.yaml` (Blueprint) que
+define un servicio web Docker y una base PostgreSQL de Render. El perfil
+`render` configura códigos CLABE ficticios y desactiva las tareas programadas
+de GestoPago; **esta configuración es únicamente para demostración académica y
+no debe usarse para operar con dinero real**.
+
+1. Sube estos cambios a la rama que quieras desplegar en GitHub.
+2. En Render selecciona **New → Blueprint**, conecta ese repositorio y confirma
+   el Blueprint `render.yaml`. Render creará el servicio Docker y PostgreSQL.
+3. Render pedirá `MONGODB_URI` durante la configuración inicial del Blueprint.
+   Proporciona la URI de MongoDB Atlas, con un usuario de base de datos y acceso
+   de red configurados para Render. No uses `localhost` para una base remota.
+4. Espera el build y el deploy. La aplicación escucha el puerto `PORT` que
+   Render proporciona y expone `/actuator/health` como health check.
+
+El Blueprint usa planes gratuitos para la demostración. Render puede suspender
+la aplicación por inactividad; su PostgreSQL gratuito tiene 1 GB y expira 30
+días después de crearse, con eliminación posterior si no se actualiza el plan.
+No almacenes información importante ahí sin un plan persistente y respaldos.
+La base declarada en el Blueprint es nueva: no la sustituyas por una base con
+datos que deban conservarse, ya que V4 contiene operaciones destructivas.
+
+Render genera `JWT_SECRET` automáticamente. Las credenciales opcionales de
+GestoPago, si luego se habilita esa integración, deben definirse como secretos
+del servicio (`GESTOPAGO_PASSWORD` y `GESTOPAGO_STATIC_TOKEN`), no en Git.
+El endpoint público de registro y la ausencia de roles hacen que esta
+configuración no sea apropiada para producción.
