@@ -237,6 +237,48 @@ class ClienteServiceImplTest {
         return cliente;
     }
 
+    @Test
+    void obtenerMiPerfil_encuentraClientePorCorreoAutenticado() {
+        Cliente cliente = clienteParaReactivacion(UUID.randomUUID());
+        cliente.setActivo(true);
+
+        when(clienteRepository.findWithRelationsByUsuarioCorreoIgnoreCase("cliente@example.com"))
+                .thenReturn(Optional.of(cliente));
+
+        var response = clienteService.obtenerMiPerfil("cliente@example.com");
+        assertEquals("Ana", response.nombre());
+    }
+
+    @Test
+    void obtenerClientes_conBanderaActivoTrue_filtraClientesActivos() {
+        when(clienteRepository.findAllByActivoOrderByCreadoEnDesc(any(Boolean.class), any()))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        var response = clienteService.obtenerClientes(true, null, null, 0, 10);
+        assertEquals(0, response.contenido().size());
+        verify(clienteRepository).findAllByActivoOrderByCreadoEnDesc(org.mockito.ArgumentMatchers.eq(true), any());
+    }
+
+    @Test
+    void obtenerClientes_conBanderaActivoFalse_filtraClientesInactivos() {
+        when(clienteRepository.findAllByActivoOrderByCreadoEnDesc(any(Boolean.class), any()))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        var response = clienteService.obtenerClientes(false, null, null, 0, 10);
+        assertEquals(0, response.contenido().size());
+        verify(clienteRepository).findAllByActivoOrderByCreadoEnDesc(org.mockito.ArgumentMatchers.eq(false), any());
+    }
+
+    @Test
+    void obtenerClientes_sinBandera_obtieneTodos() {
+        when(clienteRepository.findAllByOrderByCreadoEnDesc(any()))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        var response = clienteService.obtenerClientes(null, null, null, 0, 10);
+        assertEquals(0, response.contenido().size());
+        verify(clienteRepository).findAllByOrderByCreadoEnDesc(any());
+    }
+
     private ClienteRegistroRequest requestValido() {
         ClienteRegistroRequest request = new ClienteRegistroRequest();
         request.setNombre("Ana");

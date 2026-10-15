@@ -5,11 +5,11 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record PasswordUpdateRequest(
-        @NotBlank String passwordActual,
-        @NotBlank
-        @Size(min = 8, max = 72, message = "debe contener entre 8 y 72 caracteres")
-        @Pattern(regexp = PasswordPolicy.STRONG_PASSWORD_PATTERN,
-                message = "debe incluir mayúscula, minúscula, número y carácter especial")
+        @NotBlank(message = "La contraseña actual es obligatoria")
+        String passwordActual,
+
+        @NotBlank(message = "La nueva contraseña es obligatoria")
+        @PasswordSegura
         String passwordNueva
 ) {
     public boolean passwordNuevaEsCompatibleConBcrypt() {

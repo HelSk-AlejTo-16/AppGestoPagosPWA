@@ -12,10 +12,17 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.jpa.domain.Specification;
+import com.proyecto.servicios.model.cliente.CuentaBusquedaRequest;
 
 @Service
 @Transactional(readOnly = true)
@@ -36,11 +43,57 @@ public class CuentaServiceImpl implements CuentaService {
     }
 
     @Override
-    public PaginaResponse<CuentaResponse> obtenerActivas(int pagina, int tamano) {
+    public CuentaResponse obtenerPorNumero(String numeroCuenta, String correoAutenticado, boolean esAdmin) {
+        CuentaBancaria cuenta = cuentaRepository.findByNumeroCuenta(numeroCuenta)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "CUENTA_NO_ENCONTRADA", "No se encontró la cuenta bancaria solicitada."));
+        validarPropiedadCuenta(cuenta, correoAutenticado, esAdmin);
+        return toResponse(cuenta);
+    }
+
+    @Override
+    public PaginaResponse<CuentaResponse> obtenerCuentas(Boolean activa, int pagina, int tamano) {
         Pageable pageable = crearPagina(pagina, tamano);
-        Page<CuentaResponse> cuentas = cuentaRepository.findAllByActivaTrueOrderByCreadoEnDesc(pageable)
-                .map(this::toResponse);
+        Page<CuentaResponse> cuentas;
+        if (activa == null) {
+            cuentas = cuentaRepository.findAllByOrderByCreadoEnDesc(pageable).map(this::toResponse);
+        } else {
+            cuentas = cuentaRepository.findAllByActivaOrderByCreadoEnDesc(activa, pageable).map(this::toResponse);
+        }
         return PaginaResponse.desde(cuentas);
+    }
+
+    @Override
+    public PaginaResponse<CuentaResponse> buscar(CuentaBusquedaRequest criterios, String correoAutenticado,
+                                                 boolean esAdmin) {
+        Pageable pageable = crearPagina(criterios.pagina(), criterios.tamano());
+        Specification<CuentaBancaria> especificacion = (root, query, cb) -> {
+            List<Predicate> filtros = new ArrayList<>();
+            if (!esAdmin) {
+                // Un usuario normal solo puede ver sus propias cuentas (evita IDOR).
+                filtros.add(cb.equal(cb.lower(root.join("cliente").join("usuario").get("correo")),
+                        correoAutenticado == null ? "" : correoAutenticado.trim().toLowerCase(Locale.ROOT)));
+            }
+            if (criterios.numeroCuenta() != null && !criterios.numeroCuenta().isBlank()) {
+                filtros.add(cb.equal(root.get("numeroCuenta"), criterios.numeroCuenta().trim()));
+            }
+            if (criterios.clabe() != null && !criterios.clabe().isBlank()) {
+                filtros.add(cb.equal(root.get("clabe"), criterios.clabe().trim()));
+            }
+            if (criterios.clienteId() != null) {
+                filtros.add(cb.equal(root.get("cliente").get("idPersona"), criterios.clienteId()));
+            }
+            if (criterios.activa() != null) {
+                filtros.add(cb.equal(root.get("activa"), criterios.activa()));
+            }
+            return cb.and(filtros.toArray(new Predicate[0]));
+        };
+        return PaginaResponse.desde(cuentaRepository.findAll(especificacion, pageable).map(this::toResponse));
+    }
+
+    @Override
+    public PaginaResponse<CuentaResponse> obtenerActivas(int pagina, int tamano) {
+        return obtenerCuentas(true, pagina, tamano);
     }
 
     @Override
@@ -52,6 +105,26 @@ public class CuentaServiceImpl implements CuentaService {
                 })
                 .orElseThrow(() -> new RecursoNoEncontradoException(
                         "CUENTA_NO_ENCONTRADA", "No se encontró la cuenta bancaria solicitada."));
+    }
+
+    @Override
+    public BigDecimal obtenerSaldo(String numeroCuenta, String correoAutenticado, boolean esAdmin) {
+        CuentaBancaria cuenta = cuentaRepository.findByNumeroCuenta(numeroCuenta)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "CUENTA_NO_ENCONTRADA", "No se encontró la cuenta bancaria solicitada."));
+        validarPropiedadCuenta(cuenta, correoAutenticado, esAdmin);
+        validarOperable(cuenta);
+        return cuenta.getSaldo();
+    }
+
+    private void validarPropiedadCuenta(CuentaBancaria cuenta, String correoAutenticado, boolean esAdmin) {
+        if (esAdmin) {
+            return;
+        }
+        if (cuenta.getCliente() == null || cuenta.getCliente().getUsuario() == null
+                || !cuenta.getCliente().getUsuario().getCorreo().equalsIgnoreCase(correoAutenticado)) {
+            throw new AccessDeniedException("No tiene permiso para acceder a esta cuenta bancaria.");
+        }
     }
 
     @Override

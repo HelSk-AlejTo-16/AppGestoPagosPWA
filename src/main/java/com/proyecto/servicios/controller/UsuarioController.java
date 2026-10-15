@@ -1,60 +1,54 @@
 package com.proyecto.servicios.controller;
 
+import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.cliente.PasswordUpdateRequest;
-import com.proyecto.servicios.model.cliente.UsuarioResponse;
-import com.proyecto.servicios.model.cliente.ClienteResponse;
-import com.proyecto.servicios.service.ClienteService;
 import com.proyecto.servicios.service.UsuarioService;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.http.ResponseEntity;
 
-import java.util.UUID;
-
+/**
+ * Todas las operaciones actúan sobre el usuario autenticado (identidad tomada del JWT),
+ * por lo que no existen identificadores en la URL que puedan manipularse.
+ */
 @RestController
 @RequestMapping("/usuarios")
 public class UsuarioController {
 
     private final UsuarioService usuarioService;
-    private final ClienteService clienteService;
 
-    public UsuarioController(UsuarioService usuarioService, ClienteService clienteService) {
+    public UsuarioController(UsuarioService usuarioService) {
         this.usuarioService = usuarioService;
-        this.clienteService = clienteService;
     }
 
-    @GetMapping("/{id}")
-    public UsuarioResponse obtenerPorId(@PathVariable UUID id, Authentication authentication) {
-        return usuarioService.obtenerPorId(id, authentication.getName());
+    @GetMapping("/me")
+    public ResponseEntity<GenericResponse> obtenerMiUsuario(Authentication authentication) {
+        return ResponseEntity.ok(GenericResponse.ok("Consulta exitosa.",
+                usuarioService.obtenerMiUsuario(authentication.getName())));
     }
 
-    @GetMapping("/{id}/perfil")
-    public ClienteResponse obtenerPerfil(@PathVariable UUID id, Authentication authentication) {
-        return clienteService.obtenerPorIdPropio(id, authentication.getName());
+    @PutMapping("/me/password")
+    public ResponseEntity<GenericResponse> actualizarPassword(Authentication authentication,
+                                                              @Valid @RequestBody PasswordUpdateRequest request) {
+        return ResponseEntity.ok(GenericResponse.ok("Contraseña actualizada correctamente.",
+                usuarioService.actualizarMiPassword(authentication.getName(), request)));
     }
 
-    @PutMapping("/{id}/password")
-    public UsuarioResponse actualizarPassword(@PathVariable UUID id,
-                                              Authentication authentication,
-                                              @Valid @RequestBody PasswordUpdateRequest request) {
-        return usuarioService.actualizarPassword(id, authentication.getName(), request);
+    @DeleteMapping("/me")
+    public ResponseEntity<GenericResponse> desactivarMiUsuario(Authentication authentication) {
+        usuarioService.desactivarMiUsuario(authentication.getName());
+        return ResponseEntity.ok(GenericResponse.ok("Usuario desactivado correctamente.", null));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> desactivarPropio(@PathVariable UUID id, Authentication authentication) {
-        usuarioService.desactivarPropio(id, authentication.getName());
-        return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("/{id}/reactivar")
-    public UsuarioResponse reactivarPropio(@PathVariable UUID id, Authentication authentication) {
-        return usuarioService.reactivarPropio(id, authentication.getName());
+    @PutMapping("/me/reactivar")
+    public ResponseEntity<GenericResponse> reactivarMiUsuario(Authentication authentication) {
+        return ResponseEntity.ok(GenericResponse.ok("Usuario reactivado correctamente.",
+                usuarioService.reactivarMiUsuario(authentication.getName())));
     }
 }

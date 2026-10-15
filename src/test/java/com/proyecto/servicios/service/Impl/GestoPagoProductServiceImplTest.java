@@ -162,9 +162,7 @@ class GestoPagoProductServiceImplTest {
         when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
 
         // Simular token activo
-        GestoPagoToken token = new GestoPagoToken();
-        token.setToken("token-fresco-123");
-        when(tokenService.obtenerTokenActivo(any(), any())).thenReturn(Optional.of(token));
+        when(tokenService.obtenerBearerToken(any(), any())).thenReturn("token-fresco-123");
 
         // Simular respuesta XML de la API
         String xmlResponse = "<?xml version='1.0' encoding='UTF-8'?>" +
@@ -195,7 +193,8 @@ class GestoPagoProductServiceImplTest {
         // Arrange - TODO falla
         when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
         when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
-        when(tokenService.obtenerTokenActivo(any(), any())).thenReturn(Optional.empty());
+        when(tokenService.obtenerBearerToken(any(), any()))
+                .thenThrow(new RuntimeException("Fallo en servicio de autenticación"));
 
         // Act & Assert
         CatalogUnavailableException exception = assertThrows(

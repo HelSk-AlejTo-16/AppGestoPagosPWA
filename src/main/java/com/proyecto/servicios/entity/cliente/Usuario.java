@@ -52,6 +52,9 @@ public class Usuario {
     @Column(name = "fecha_bloqueo")
     private OffsetDateTime fechaBloqueo;
 
+    @Column(name = "rol", nullable = false, length = 20)
+    private String rol = "ROLE_USER";
+
     @PrePersist
     void onCreate() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);

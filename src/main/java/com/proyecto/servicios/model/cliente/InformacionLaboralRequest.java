@@ -14,16 +14,16 @@ import java.math.BigDecimal;
 @Setter
 public class InformacionLaboralRequest {
 
-    @NotNull
-    @DecimalMin(value = "0.01", message = "debe ser mayor a cero")
-    @Digits(integer = 10, fraction = 2)
+    @NotNull(message = "El ingreso mensual es obligatorio")
+    @DecimalMin(value = "0.01", message = "El ingreso mensual debe ser mayor a cero")
+    @Digits(integer = 10, fraction = 2, message = "El ingreso mensual debe tener formato numérico válido")
     private BigDecimal ingresoMensual;
 
-    @NotBlank
-    @Size(max = 100)
+    @NotBlank(message = "La ocupación es obligatoria")
+    @Size(max = 100, message = "La ocupación no puede exceder los 100 caracteres")
     private String ocupacion;
 
-    @NotBlank
-    @Size(max = 100)
+    @NotBlank(message = "La empresa es obligatoria")
+    @Size(max = 100, message = "La empresa no puede exceder los 100 caracteres")
     private String empresa;
 }

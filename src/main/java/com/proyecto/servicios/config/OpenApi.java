@@ -16,7 +16,7 @@ public class OpenApi {
     @Bean
     public OpenAPI openAPI() {
         return new OpenAPI()
-                .addServersItem(new Server().url("http://localhost:8081"))
+                .addServersItem(new Server().url("/"))
                 .components(new Components().addSecuritySchemes(
                         JWT_SCHEME,
                         new SecurityScheme()

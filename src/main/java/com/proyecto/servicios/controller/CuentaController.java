@@ -1,21 +1,21 @@
 package com.proyecto.servicios.controller;
 
-import com.proyecto.servicios.model.cliente.CuentaResponse;
-import com.proyecto.servicios.model.cliente.PaginaResponse;
+import com.proyecto.servicios.model.GenericResponse;
+import com.proyecto.servicios.model.cliente.CuentaBusquedaRequest;
+import com.proyecto.servicios.model.cliente.CuentaConsultaRequest;
+import com.proyecto.servicios.model.cliente.CuentaSaldoResponse;
 import com.proyecto.servicios.service.CuentaService;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 
 @RestController
-@Validated
 @RequestMapping("/cuentas")
 public class CuentaController {
 
@@ -25,20 +25,28 @@ public class CuentaController {
         this.cuentaService = cuentaService;
     }
 
-    @GetMapping("/activas")
-    public PaginaResponse<CuentaResponse> obtenerActivas(
-            @RequestParam(defaultValue = "0") @Min(0) int pagina,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamano) {
-        return cuentaService.obtenerActivas(pagina, tamano);
+    /**
+     * Único endpoint de consulta de cuentas con filtros combinables.
+     * Un usuario normal solo recibe sus propias cuentas; el administrador, todas.
+     */
+    @PostMapping("/buscar")
+    public ResponseEntity<GenericResponse> buscar(@Valid @RequestBody CuentaBusquedaRequest criterios,
+                                                  Authentication authentication) {
+        return ResponseEntity.ok(GenericResponse.ok("Consulta exitosa.",
+                cuentaService.buscar(criterios, authentication.getName(), esAdmin(authentication))));
     }
 
-    @GetMapping("/{numeroCuenta}/saldo")
-    public BigDecimal obtenerSaldo(@PathVariable String numeroCuenta) {
-        return cuentaService.obtenerSaldo(numeroCuenta);
+    @PostMapping("/saldo")
+    public ResponseEntity<GenericResponse> obtenerSaldo(@Valid @RequestBody CuentaConsultaRequest request,
+                                                        Authentication authentication) {
+        BigDecimal saldo = cuentaService.obtenerSaldo(
+                request.numeroCuenta(), authentication.getName(), esAdmin(authentication));
+        return ResponseEntity.ok(GenericResponse.ok("Consulta exitosa.",
+                new CuentaSaldoResponse(request.numeroCuenta(), saldo)));
     }
 
-    @GetMapping("/{numeroCuenta}")
-    public CuentaResponse obtenerPorNumero(@PathVariable String numeroCuenta) {
-        return cuentaService.obtenerPorNumero(numeroCuenta);
+    private boolean esAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
     }
 }

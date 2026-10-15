@@ -17,95 +17,117 @@ import java.time.LocalDate;
 
 @Getter
 @Setter
+@ValidarRegistroCliente
 public class ClienteRegistroRequest {
 
-    @NotBlank
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "use solo letras y espacios, sin espacios al inicio o al final")
+    @NotBlank(message = "El nombre es obligatorio")
+    @Size(min = 2, max = 50, message = "El nombre debe tener entre 2 y 50 caracteres")
+    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "El nombre debe contener solo letras y espacios")
     private String nombre;
 
-    @Size(max = 50)
-    @Pattern(regexp = "(?:|[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}]))", message = "use solo letras y espacios")
+    @Size(max = 50, message = "El segundo nombre no puede exceder los 50 caracteres")
+    @Pattern(regexp = "(?:|[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}]))", message = "El segundo nombre debe contener solo letras y espacios")
     private String segundoNombre;
 
-    @NotBlank
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "use solo letras y espacios, sin espacios al inicio o al final")
+    @NotBlank(message = "El apellido paterno es obligatorio")
+    @Size(min = 2, max = 50, message = "El apellido paterno debe tener entre 2 y 50 caracteres")
+    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "El apellido paterno debe contener solo letras y espacios")
     private String apellidoPaterno;
 
-    @NotBlank
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "use solo letras y espacios, sin espacios al inicio o al final")
+    @Size(max = 50, message = "El apellido materno no puede exceder los 50 caracteres")
+    @Pattern(regexp = "(?:|[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}]))", message = "El apellido materno debe contener solo letras y espacios")
     private String apellidoMaterno;
 
-    @NotNull
-    @PastOrPresent
+    @NotNull(message = "La fecha de nacimiento es obligatoria")
+    @PastOrPresent(message = "La fecha de nacimiento no puede ser una fecha futura")
     private LocalDate fechaNacimiento;
 
-    @NotNull
+    @NotNull(message = "El sexo es obligatorio")
     private Sexo sexo;
 
-    @NotNull
+    @NotNull(message = "El estado civil es obligatorio")
     private EstadoCivil estadoCivil;
 
-    @NotBlank
+    @NotBlank(message = "La CURP es obligatoria")
     @Pattern(
             regexp = "(?i)[A-Z][AEIOUX][A-Z]{2}\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])[HM](AS|BC|BS|CC|CL|CM|CS|CH|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QT|QR|SP|SL|SR|TC|TS|TL|VZ|YN|ZS|NE)[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]\\d",
-            message = "no tiene un formato CURP válido")
+            message = "La CURP no tiene un formato válido")
     private String curp;
 
-    @NotBlank
+    @NotBlank(message = "El RFC es obligatorio")
     @Pattern(regexp = "(?i)(?:[A-ZÑ&]{3}\\d{6}[A-Z0-9]{3}|[A-ZÑ&]{4}\\d{6}[A-Z0-9]{3})",
-            message = "no tiene un formato RFC válido")
+            message = "El RFC no tiene un formato válido")
     private String rfc;
 
-    @NotBlank
-    @Size(max = 50)
+    @NotBlank(message = "La nacionalidad es obligatoria")
+    @Size(max = 50, message = "La nacionalidad no puede exceder los 50 caracteres")
     private String nacionalidad = "Mexicana";
 
-    @NotBlank
-    @Email
-    @Size(max = 100)
+    @NotBlank(message = "El correo electrónico es obligatorio")
+    @Email(message = "El correo electrónico no tiene un formato válido")
+    @Size(max = 100, message = "El correo electrónico no puede exceder los 100 caracteres")
     private String correo;
 
-    @NotBlank
-    @Size(min = 8, max = 72, message = "debe contener entre 8 y 72 caracteres")
-    @Pattern(regexp = PasswordPolicy.STRONG_PASSWORD_PATTERN,
-            message = "debe incluir mayúscula, minúscula, número y carácter especial")
+    @NotBlank(message = "La contraseña es obligatoria")
+    @PasswordSegura
     private String password;
 
-    @NotBlank
-    @Pattern(regexp = "\\d{10}", message = "debe contener exactamente 10 dígitos")
+    @NotBlank(message = "El teléfono móvil es obligatorio")
+    @Pattern(regexp = "\\d{10}", message = "El teléfono móvil debe contener exactamente 10 dígitos")
     private String telefonoMovil;
 
-    @Pattern(regexp = "(?:|\\d{10})", message = "debe contener exactamente 10 dígitos")
+    @Pattern(regexp = "(?:|\\d{10})", message = "El teléfono alternativo debe contener exactamente 10 dígitos")
     private String telefonoAlternativo;
 
-    @NotNull
+    @NotNull(message = "La dirección es obligatoria")
     @Valid
     private DireccionRequest direccion;
 
-    @NotNull
+    @NotNull(message = "La información laboral es obligatoria")
     @Valid
     private InformacionLaboralRequest informacionLaboral;
 
-    @AssertTrue(message = "La CURP debe coincidir con la fecha de nacimiento y el sexo, e incluir dígito verificador válido")
-    public boolean isCurpConsistente() {
-        return curp == null || curp.isBlank()
-                || ValidacionesIdentificadores.curpConsistente(curp, fechaNacimiento, sexo);
+    public void setNombre(String nombre) {
+        this.nombre = limpiarTexto(nombre);
     }
 
-    @AssertTrue(message = "La fecha incluida en el RFC debe coincidir con la fecha de nacimiento")
-    public boolean isRfcConsistente() {
-        return rfc == null || rfc.isBlank()
-                || ValidacionesIdentificadores.rfcConsistente(rfc, fechaNacimiento);
+    public void setSegundoNombre(String segundoNombre) {
+        this.segundoNombre = limpiarTexto(segundoNombre);
     }
 
-    @AssertTrue(message = "Debe ser mayor de 18 años")
-    public boolean isMayorDeEdad() {
-        if (fechaNacimiento == null) {
-            return true; // Se valida con @NotNull
+    public void setApellidoPaterno(String apellidoPaterno) {
+        this.apellidoPaterno = limpiarTexto(apellidoPaterno);
+    }
+
+    public void setApellidoMaterno(String apellidoMaterno) {
+        this.apellidoMaterno = limpiarTexto(apellidoMaterno);
+    }
+
+    public void setCurp(String curp) {
+        this.curp = curp != null ? curp.trim().toUpperCase() : null;
+    }
+
+    public void setRfc(String rfc) {
+        this.rfc = rfc != null ? rfc.trim().toUpperCase() : null;
+    }
+
+    public void setCorreo(String correo) {
+        this.correo = correo != null ? correo.trim().toLowerCase() : null;
+    }
+
+    public void setTelefonoMovil(String telefonoMovil) {
+        this.telefonoMovil = telefonoMovil != null ? telefonoMovil.trim() : null;
+    }
+
+    public void setTelefonoAlternativo(String telefonoAlternativo) {
+        this.telefonoAlternativo = telefonoAlternativo != null ? telefonoAlternativo.trim() : null;
+    }
+
+    private static String limpiarTexto(String valor) {
+        if (valor == null) {
+            return null;
         }
-        return java.time.Period.between(fechaNacimiento, java.time.LocalDate.now()).getYears() >= 18;
+        String limpio = valor.trim().replaceAll("\\s+", " ");
+        return limpio.isEmpty() ? null : limpio;
     }
 }

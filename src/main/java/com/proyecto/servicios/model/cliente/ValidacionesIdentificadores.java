@@ -14,42 +14,60 @@ public final class ValidacionesIdentificadores {
     private ValidacionesIdentificadores() {
     }
 
-    public static boolean curpConsistente(String curp, LocalDate fechaNacimiento, Sexo sexo) {
+    public static String detalleErrorCurp(String curp, LocalDate fechaNacimiento, Sexo sexo) {
         if (curp == null || fechaNacimiento == null || curp.length() != 18) {
-            return false;
+            return null;
         }
         String valor = curp.toUpperCase(Locale.ROOT);
-        if (!valor.substring(4, 10).equals(FECHA_CURP.format(fechaNacimiento))) {
-            return false;
+        String fechaEsperada = FECHA_CURP.format(fechaNacimiento);
+        if (!valor.substring(4, 10).equals(fechaEsperada)) {
+            return "La fecha en la CURP (" + valor.substring(4, 10) + ") no coincide con la fecha de nacimiento (" + fechaEsperada + ")";
         }
         if (sexo == Sexo.M && valor.charAt(10) != 'H') {
-            return false;
+            return "El sexo en la CURP debe ser 'H' para sexo Masculino";
         }
         if (sexo == Sexo.F && valor.charAt(10) != 'M') {
-            return false;
+            return "El sexo en la CURP debe ser 'M' para sexo Femenino";
         }
         int suma = 0;
         for (int i = 0; i < 17; i++) {
             int valorCaracter = valorCaracterCurp(valor.charAt(i));
             if (valorCaracter < 0) {
-                return false;
+                return "La CURP contiene un carácter no reconocido en la posición " + (i + 1);
             }
             suma += valorCaracter * (18 - i);
         }
         int digitoVerificador = (10 - suma % 10) % 10;
-        return valor.charAt(17) == (char) ('0' + digitoVerificador);
+        char esperado = (char) ('0' + digitoVerificador);
+        if (valor.charAt(17) != esperado) {
+            return "El dígito verificador de la CURP no es válido";
+        }
+        return null;
     }
 
-    public static boolean rfcConsistente(String rfc, LocalDate fechaNacimiento) {
+    public static String detalleErrorRfc(String rfc, LocalDate fechaNacimiento) {
         if (rfc == null || fechaNacimiento == null) {
-            return false;
+            return null;
         }
         String valor = rfc.toUpperCase(Locale.ROOT);
         int inicioFecha = valor.length() == 13 ? 4 : 3;
         int finFecha = inicioFecha + 6;
-        return valor.length() == 12 || valor.length() == 13
-                ? valor.substring(inicioFecha, finFecha).equals(FECHA_RFC.format(fechaNacimiento))
-                : false;
+        if (valor.length() == 12 || valor.length() == 13) {
+            String fechaEnRfc = valor.substring(inicioFecha, finFecha);
+            String fechaEsperada = FECHA_RFC.format(fechaNacimiento);
+            if (!fechaEnRfc.equals(fechaEsperada)) {
+                return "La fecha en el RFC (" + fechaEnRfc + ") no coincide con la fecha de nacimiento (" + fechaEsperada + ")";
+            }
+        }
+        return null;
+    }
+
+    public static boolean curpConsistente(String curp, LocalDate fechaNacimiento, Sexo sexo) {
+        return detalleErrorCurp(curp, fechaNacimiento, sexo) == null;
+    }
+
+    public static boolean rfcConsistente(String rfc, LocalDate fechaNacimiento) {
+        return detalleErrorRfc(rfc, fechaNacimiento) == null;
     }
 
     private static int valorCaracterCurp(char caracter) {
