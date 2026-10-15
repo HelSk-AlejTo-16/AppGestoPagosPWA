@@ -3,15 +3,21 @@ package com.proyecto.servicios.repositorys.cliente;
 import com.proyecto.servicios.entity.cliente.Cliente;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface ClienteRepository extends JpaRepository<Cliente, UUID> {
+public interface ClienteRepository extends JpaRepository<Cliente, UUID>, JpaSpecificationExecutor<Cliente> {
+
+    @Override
+    @EntityGraph(attributePaths = {"contacto", "direccion", "informacionLaboral", "usuario"})
+    Page<Cliente> findAll(Specification<Cliente> spec, Pageable pageable);
 
     boolean existsByCurpIgnoreCase(String curp);
 
@@ -34,6 +40,9 @@ public interface ClienteRepository extends JpaRepository<Cliente, UUID> {
 
     @EntityGraph(attributePaths = {"contacto", "direccion", "informacionLaboral", "usuario"})
     Page<Cliente> findAllByActivoTrueOrderByCreadoEnDesc(Pageable pageable);
+
+    @EntityGraph(attributePaths = {"contacto", "direccion", "informacionLaboral", "usuario"})
+    Page<Cliente> findAllByActivoOrderByCreadoEnDesc(boolean activo, Pageable pageable);
 
     @EntityGraph(attributePaths = {"contacto", "direccion", "informacionLaboral", "usuario"})
     Page<Cliente> findAllByCreadoEnGreaterThanEqualAndCreadoEnLessThanOrderByCreadoEnDesc(

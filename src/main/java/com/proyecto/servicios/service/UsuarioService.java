@@ -9,9 +9,17 @@ public interface UsuarioService {
 
     UsuarioResponse obtenerPorId(UUID id, String correoAutenticado);
 
+    UsuarioResponse obtenerMiUsuario(String correoAutenticado);
+
     UsuarioResponse actualizarPassword(UUID id, String correoAutenticado, PasswordUpdateRequest request);
 
     void desactivarPropio(UUID id, String correoAutenticado);
 
     UsuarioResponse reactivarPropio(UUID id, String correoAutenticado);
+
+    UsuarioResponse actualizarMiPassword(String correoAutenticado, PasswordUpdateRequest request);
+
+    void desactivarMiUsuario(String correoAutenticado);
+
+    UsuarioResponse reactivarMiUsuario(String correoAutenticado);
 }

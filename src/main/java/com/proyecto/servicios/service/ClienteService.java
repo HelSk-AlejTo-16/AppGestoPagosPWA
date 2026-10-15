@@ -1,6 +1,7 @@
 package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.model.cliente.ClienteActualizarRequest;
+import com.proyecto.servicios.model.cliente.ClienteBusquedaRequest;
 import com.proyecto.servicios.model.cliente.ClienteRegistroRequest;
 import com.proyecto.servicios.model.cliente.ClienteResponse;
 import com.proyecto.servicios.model.cliente.PaginaResponse;
@@ -11,6 +12,12 @@ import java.util.UUID;
 public interface ClienteService {
 
     ClienteResponse registrar(ClienteRegistroRequest request);
+
+    PaginaResponse<ClienteResponse> obtenerClientes(Boolean activo, LocalDate desde, LocalDate hasta, int pagina, int tamano);
+
+    PaginaResponse<ClienteResponse> buscar(ClienteBusquedaRequest criterios);
+
+    void desactivarMiCuenta(String correoAutenticado);
 
     PaginaResponse<ClienteResponse> obtenerTodos(int pagina, int tamano);
 
@@ -31,6 +38,10 @@ public interface ClienteService {
     PaginaResponse<ClienteResponse> obtenerRegistrados(LocalDate desde, LocalDate hasta, int pagina, int tamano);
 
     ClienteResponse actualizar(UUID id, String correoAutenticado, ClienteActualizarRequest request);
+
+    ClienteResponse obtenerMiPerfil(String correoAutenticado);
+
+    ClienteResponse actualizarMiPerfil(String correoAutenticado, ClienteActualizarRequest request);
 
     void desactivar(UUID id, String correoAutenticado);
 

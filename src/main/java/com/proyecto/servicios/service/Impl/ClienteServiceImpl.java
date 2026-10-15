@@ -46,6 +46,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
+import org.springframework.data.jpa.domain.Specification;
+import com.proyecto.servicios.model.cliente.ClienteBusquedaRequest;
 
 @Service
 @Transactional
@@ -128,14 +134,84 @@ public class ClienteServiceImpl implements ClienteService {
 
     @Override
     @Transactional(readOnly = true)
+    public PaginaResponse<ClienteResponse> obtenerClientes(
+            Boolean activo, LocalDate desde, LocalDate hasta, int pagina, int tamano) {
+        if (desde != null || hasta != null) {
+            return obtenerRegistrados(desde, hasta, pagina, tamano);
+        }
+        Pageable pageable = crearPagina(pagina, tamano);
+        if (activo == null) {
+            return paginar(clienteRepository.findAllByOrderByCreadoEnDesc(pageable));
+        }
+        return paginar(clienteRepository.findAllByActivoOrderByCreadoEnDesc(activo, pageable));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginaResponse<ClienteResponse> buscar(ClienteBusquedaRequest criterios) {
+        LocalDate desde = criterios.fechaRegistroDesde();
+        LocalDate hasta = criterios.fechaRegistroHasta();
+        if (desde != null && hasta != null && desde.isAfter(hasta)) {
+            throw new ErrorValidacionException("El rango de fechas es inválido.");
+        }
+        Pageable pageable = crearPagina(criterios.pagina(), criterios.tamano());
+        Specification<Cliente> especificacion = (root, query, cb) -> {
+            List<Predicate> filtros = new ArrayList<>();
+            if (criterios.id() != null) {
+                filtros.add(cb.equal(root.get("idPersona"), criterios.id()));
+            }
+            if (criterios.curp() != null && !criterios.curp().isBlank()) {
+                filtros.add(cb.equal(cb.upper(root.get("curp")), normalizar(criterios.curp())));
+            }
+            if (criterios.rfc() != null && !criterios.rfc().isBlank()) {
+                filtros.add(cb.equal(cb.upper(root.get("rfc")), normalizar(criterios.rfc())));
+            }
+            if (criterios.correo() != null && !criterios.correo().isBlank()) {
+                filtros.add(cb.equal(cb.lower(root.join("usuario").get("correo")),
+                        normalizarCorreo(criterios.correo())));
+            }
+            if (criterios.numeroCuenta() != null && !criterios.numeroCuenta().isBlank()) {
+                Subquery<Integer> subconsulta = query.subquery(Integer.class);
+                Root<CuentaBancaria> cuenta = subconsulta.from(CuentaBancaria.class);
+                subconsulta.select(cb.literal(1)).where(
+                        cb.equal(cuenta.get("cliente"), root),
+                        cb.equal(cuenta.get("numeroCuenta"), criterios.numeroCuenta().trim()));
+                filtros.add(cb.exists(subconsulta));
+            }
+            if (criterios.activo() != null) {
+                filtros.add(cb.equal(root.get("activo"), criterios.activo()));
+            }
+            if (desde != null) {
+                filtros.add(cb.greaterThanOrEqualTo(root.<OffsetDateTime>get("creadoEn"),
+                        desde.atStartOfDay().atOffset(ZoneOffset.UTC)));
+            }
+            if (hasta != null) {
+                filtros.add(cb.lessThan(root.<OffsetDateTime>get("creadoEn"),
+                        hasta.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC)));
+            }
+            return cb.and(filtros.toArray(new Predicate[0]));
+        };
+        return paginar(clienteRepository.findAll(especificacion, pageable));
+    }
+
+    @Override
+    public void desactivarMiCuenta(String correoAutenticado) {
+        Cliente cliente = clienteRepository.findWithRelationsByUsuarioCorreoIgnoreCase(normalizarCorreo(correoAutenticado))
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "CLIENTE_NO_ENCONTRADO", "No se encontró el perfil del cliente."));
+        desactivar(cliente.getIdPersona(), correoAutenticado);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PaginaResponse<ClienteResponse> obtenerTodos(int pagina, int tamano) {
-        return paginar(clienteRepository.findAllByOrderByCreadoEnDesc(crearPagina(pagina, tamano)));
+        return obtenerClientes(null, null, null, pagina, tamano);
     }
 
     @Override
     @Transactional(readOnly = true)
     public PaginaResponse<ClienteResponse> obtenerActivos(int pagina, int tamano) {
-        return paginar(clienteRepository.findAllByActivoTrueOrderByCreadoEnDesc(crearPagina(pagina, tamano)));
+        return obtenerClientes(true, null, null, pagina, tamano);
     }
 
     @Override
@@ -232,6 +308,23 @@ public class ClienteServiceImpl implements ClienteService {
         actualizarInformacionLaboral(cliente.getInformacionLaboral(), request.getInformacionLaboral());
 
         return toResponse(clienteRepository.saveAndFlush(cliente));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ClienteResponse obtenerMiPerfil(String correoAutenticado) {
+        Cliente cliente = clienteRepository.findWithRelationsByUsuarioCorreoIgnoreCase(normalizarCorreo(correoAutenticado))
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "CLIENTE_NO_ENCONTRADO", "No se encontró el perfil del cliente."));
+        return toResponse(cliente);
+    }
+
+    @Override
+    public ClienteResponse actualizarMiPerfil(String correoAutenticado, ClienteActualizarRequest request) {
+        Cliente cliente = clienteRepository.findWithRelationsByUsuarioCorreoIgnoreCase(normalizarCorreo(correoAutenticado))
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "CLIENTE_NO_ENCONTRADO", "No se encontró el perfil del cliente."));
+        return actualizar(cliente.getIdPersona(), correoAutenticado, request);
     }
 
     @Override

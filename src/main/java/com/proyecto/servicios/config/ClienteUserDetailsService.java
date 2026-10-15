@@ -24,10 +24,11 @@ public class ClienteUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String correo) throws UsernameNotFoundException {
         Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(correo)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado."));
-        boolean activo = usuario.isActivo() && usuario.getCliente().isActivo();
+        boolean activo = usuario.isActivo() && (usuario.getCliente() == null || usuario.getCliente().isActivo());
+        String autoridad = !activo ? "ROLE_RECOVERY" : (usuario.getRol() != null ? usuario.getRol() : "ROLE_USER");
         return User.withUsername(usuario.getCorreo())
                 .password(usuario.getPassword())
-                .authorities(List.of(new SimpleGrantedAuthority(activo ? "ROLE_USER" : "ROLE_RECOVERY")))
+                .authorities(List.of(new SimpleGrantedAuthority(autoridad)))
                 .build();
     }
 }

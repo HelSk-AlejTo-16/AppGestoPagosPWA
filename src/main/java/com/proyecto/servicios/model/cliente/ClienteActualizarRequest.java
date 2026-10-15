@@ -18,56 +18,55 @@ import java.time.LocalDate;
 @Setter
 public class ClienteActualizarRequest {
 
-    @NotBlank
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "use solo letras y espacios, sin espacios al inicio o al final")
+    @NotBlank(message = "El nombre es obligatorio")
+    @Size(min = 2, max = 50, message = "El nombre debe tener entre 2 y 50 caracteres")
+    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "El nombre debe contener solo letras y espacios")
     private String nombre;
 
-    @Size(max = 50)
-    @Pattern(regexp = "(?:|[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}]))", message = "use solo letras y espacios")
+    @Size(max = 50, message = "El segundo nombre no puede exceder los 50 caracteres")
+    @Pattern(regexp = "(?:|[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}]))", message = "El segundo nombre debe contener solo letras y espacios")
     private String segundoNombre;
 
-    @NotBlank
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "use solo letras y espacios, sin espacios al inicio o al final")
+    @NotBlank(message = "El apellido paterno es obligatorio")
+    @Size(min = 2, max = 50, message = "El apellido paterno debe tener entre 2 y 50 caracteres")
+    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "El apellido paterno debe contener solo letras y espacios")
     private String apellidoPaterno;
 
-    @NotBlank
-    @Size(min = 2, max = 50)
-    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "use solo letras y espacios, sin espacios al inicio o al final")
+    @Size(max = 50, message = "El apellido materno no puede exceder los 50 caracteres")
+    @Pattern(regexp = "(?:|[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}]))", message = "El apellido materno debe contener solo letras y espacios")
     private String apellidoMaterno;
 
-    @NotNull
-    @PastOrPresent
+    @NotNull(message = "La fecha de nacimiento es obligatoria")
+    @PastOrPresent(message = "La fecha de nacimiento no puede ser una fecha futura")
     private LocalDate fechaNacimiento;
 
-    @NotNull
+    @NotNull(message = "El sexo es obligatorio")
     private Sexo sexo;
 
-    @NotNull
+    @NotNull(message = "El estado civil es obligatorio")
     private EstadoCivil estadoCivil;
 
-    @NotBlank
-    @Size(max = 50)
+    @NotBlank(message = "La nacionalidad es obligatoria")
+    @Size(max = 50, message = "La nacionalidad no puede exceder los 50 caracteres")
     private String nacionalidad;
 
-    @NotBlank
-    @Email
-    @Size(max = 100)
+    @NotBlank(message = "El correo electrónico es obligatorio")
+    @Email(message = "El correo electrónico no tiene un formato válido")
+    @Size(max = 100, message = "El correo electrónico no puede exceder los 100 caracteres")
     private String correo;
 
-    @NotBlank
-    @Pattern(regexp = "\\d{10}", message = "debe contener exactamente 10 dígitos")
+    @NotBlank(message = "El teléfono móvil es obligatorio")
+    @Pattern(regexp = "\\d{10}", message = "El teléfono móvil debe contener exactamente 10 dígitos")
     private String telefonoMovil;
 
-    @Pattern(regexp = "(?:|\\d{10})", message = "debe contener exactamente 10 dígitos")
+    @Pattern(regexp = "(?:|\\d{10})", message = "El teléfono alternativo debe contener exactamente 10 dígitos")
     private String telefonoAlternativo;
 
-    @NotNull
+    @NotNull(message = "La dirección es obligatoria")
     @Valid
     private DireccionRequest direccion;
 
-    @NotNull
+    @NotNull(message = "La información laboral es obligatoria")
     @Valid
     private InformacionLaboralRequest informacionLaboral;
 
@@ -77,5 +76,41 @@ public class ClienteActualizarRequest {
             return true; // Se valida con @NotNull
         }
         return java.time.Period.between(fechaNacimiento, java.time.LocalDate.now()).getYears() >= 18;
+    }
+
+    public void setNombre(String nombre) {
+        this.nombre = limpiarTexto(nombre);
+    }
+
+    public void setSegundoNombre(String segundoNombre) {
+        this.segundoNombre = limpiarTexto(segundoNombre);
+    }
+
+    public void setApellidoPaterno(String apellidoPaterno) {
+        this.apellidoPaterno = limpiarTexto(apellidoPaterno);
+    }
+
+    public void setApellidoMaterno(String apellidoMaterno) {
+        this.apellidoMaterno = limpiarTexto(apellidoMaterno);
+    }
+
+    public void setCorreo(String correo) {
+        this.correo = correo != null ? correo.trim().toLowerCase() : null;
+    }
+
+    public void setTelefonoMovil(String telefonoMovil) {
+        this.telefonoMovil = telefonoMovil != null ? telefonoMovil.trim() : null;
+    }
+
+    public void setTelefonoAlternativo(String telefonoAlternativo) {
+        this.telefonoAlternativo = telefonoAlternativo != null ? telefonoAlternativo.trim() : null;
+    }
+
+    private static String limpiarTexto(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String limpio = valor.trim().replaceAll("\\s+", " ");
+        return limpio.isEmpty() ? null : limpio;
     }
 }

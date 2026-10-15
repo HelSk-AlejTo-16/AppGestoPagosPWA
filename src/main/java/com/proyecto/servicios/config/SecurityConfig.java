@@ -18,21 +18,36 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter)
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
+                                                   SecurityErrorHandler securityErrorHandler)
             throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler))
                 .authorizeHttpRequests(authorize -> authorize
+                        // Endpoints públicos
                         .requestMatchers(HttpMethod.POST, "/auth/login", "/clientes").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/usuarios/{id}", "/usuarios/{id}/perfil")
-                        .hasAnyAuthority("ROLE_USER", "ROLE_RECOVERY")
-                        .requestMatchers(HttpMethod.PUT, "/usuarios/{id}/reactivar").hasAuthority("ROLE_RECOVERY")
-                        .requestMatchers(HttpMethod.DELETE, "/usuarios/{id}").hasAuthority("ROLE_USER")
-                        .anyRequest().hasAuthority("ROLE_USER"))
+
+                        // Perfil propio: la identidad sale del token (evita BOLA / IDOR)
+                        .requestMatchers(HttpMethod.GET, "/usuarios/me")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN", "ROLE_RECOVERY")
+                        .requestMatchers(HttpMethod.PUT, "/usuarios/me/reactivar").hasAuthority("ROLE_RECOVERY")
+                        .requestMatchers("/usuarios/me", "/usuarios/me/password")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+                        .requestMatchers("/clientes/me").hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+
+                        // Consultas administrativas (SOLO ROLE_ADMIN)
+                        .requestMatchers(HttpMethod.POST, "/clientes/buscar").hasAuthority("ROLE_ADMIN")
+
+                        // Cuentas: cada usuario solo ve las suyas (se filtra en el servicio); admin ve todas
+                        .requestMatchers(HttpMethod.POST, "/cuentas/buscar", "/cuentas/saldo")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+
+                        .anyRequest().hasAnyAuthority("ROLE_USER", "ROLE_ADMIN"))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

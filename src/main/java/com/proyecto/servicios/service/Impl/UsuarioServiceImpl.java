@@ -40,6 +40,15 @@ public class UsuarioServiceImpl implements UsuarioService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public UsuarioResponse obtenerMiUsuario(String correoAutenticado) {
+        Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(correoAutenticado)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "USUARIO_NO_ENCONTRADO", "No se encontró el usuario solicitado."));
+        return toResponse(usuario);
+    }
+
+    @Override
     public UsuarioResponse actualizarPassword(UUID id, String correoAutenticado, PasswordUpdateRequest request) {
         if (!PasswordPolicy.compatibleConBcrypt(request.passwordNueva())) {
             throw new ErrorValidacionException("La contraseña no puede superar 72 bytes en UTF-8 con BCrypt.");
@@ -71,6 +80,28 @@ public class UsuarioServiceImpl implements UsuarioService {
         return toResponse(usuarioRepository.save(usuario));
     }
 
+    @Override
+    public UsuarioResponse actualizarMiPassword(String correoAutenticado, PasswordUpdateRequest request) {
+        return actualizarPassword(idDe(correoAutenticado), correoAutenticado, request);
+    }
+
+    @Override
+    public void desactivarMiUsuario(String correoAutenticado) {
+        desactivarPropio(idDe(correoAutenticado), correoAutenticado);
+    }
+
+    @Override
+    public UsuarioResponse reactivarMiUsuario(String correoAutenticado) {
+        return reactivarPropio(idDe(correoAutenticado), correoAutenticado);
+    }
+
+    private UUID idDe(String correoAutenticado) {
+        return usuarioRepository.findByCorreoIgnoreCase(correoAutenticado)
+                .map(Usuario::getIdUsuario)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "USUARIO_NO_ENCONTRADO", "No se encontró el usuario solicitado."));
+    }
+
     private Usuario obtenerUsuarioPropio(UUID id, String correoAutenticado, boolean permitirInactivo) {
         Usuario usuario = usuarioRepository.findByIdUsuario(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException(
@@ -89,8 +120,9 @@ public class UsuarioServiceImpl implements UsuarioService {
     private UsuarioResponse toResponse(Usuario usuario) {
         return new UsuarioResponse(
                 usuario.getIdUsuario(),
-                usuario.getCliente().getIdPersona(),
+                usuario.getCliente() != null ? usuario.getCliente().getIdPersona() : null,
                 usuario.getCorreo(),
+                usuario.getRol() != null ? usuario.getRol() : "ROLE_USER",
                 usuario.isActivo(),
                 usuario.getFechaCreacion(),
                 usuario.getFechaActualizacion()
