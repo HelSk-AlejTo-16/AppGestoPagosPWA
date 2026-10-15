@@ -44,8 +44,17 @@ public class AdminUserInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (usuarioRepository.findByCorreoIgnoreCase(adminEmail).isEmpty()) {
-            log.info("Inicializando usuario administrador ({})", adminEmail);
+        String adminCurp = "AAMI900101HDFRRN01";
+        String adminRfc = "ADMI9001011A1";
+
+        if (usuarioRepository.findByCorreoIgnoreCase(adminEmail).isPresent()
+                || clienteRepository.existsByCurpIgnoreCase(adminCurp)
+                || clienteRepository.existsByRfcIgnoreCase(adminRfc)) {
+            log.info("El usuario administrador ya existe en la base de datos. Se omite su creación.");
+            return;
+        }
+
+        log.info("Inicializando usuario administrador ({})", adminEmail);
             Cliente adminCliente = new Cliente();
             adminCliente.setNombre("Administrador");
             adminCliente.setApellidoPaterno("Sistema");
@@ -82,9 +91,8 @@ public class AdminUserInitializer implements CommandLineRunner {
             adminUsuario.setRol("ROLE_ADMIN");
             adminCliente.setUsuario(adminUsuario);
 
-            clienteRepository.save(adminCliente);
-            log.info("Usuario administrador creado exitosamente con correo: {}", adminEmail);
-        }
+        clienteRepository.save(adminCliente);
+        log.info("Usuario administrador creado exitosamente con correo: {}", adminEmail);
     }
 }
 
