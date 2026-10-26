@@ -221,6 +221,9 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         p.setServicio(doc.getServicio());
         p.setProducto(doc.getProducto());
         p.setPrecio(doc.getPrecio());
+        p.setTipoFront(doc.getTipoFront());
+        p.setTipoReferencia(doc.getTipoReferencia());
+        p.setHasDigitoVerificador(doc.getHasDigitoVerificador());
         p.setLegend(doc.getLegend());
         return p;
     }
@@ -232,6 +235,9 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         p.setServicio(entity.getServicio());
         p.setProducto(entity.getProducto());
         p.setPrecio(entity.getPrecio());
+        p.setTipoFront(entity.getTipoFront());
+        p.setTipoReferencia(entity.getTipoReferencia());
+        p.setHasDigitoVerificador(entity.getHasDigitoVerificador());
         p.setLegend(entity.getLegend());
         return p;
     }

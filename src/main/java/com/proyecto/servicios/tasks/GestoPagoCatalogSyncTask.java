@@ -143,6 +143,9 @@ public class GestoPagoCatalogSyncTask {
             pgEntity.setServicio(dto.getServicio());
             pgEntity.setProducto(dto.getProducto());
             pgEntity.setPrecio(dto.getPrecio());
+            pgEntity.setTipoFront(dto.getTipoFront());
+            pgEntity.setTipoReferencia(dto.getTipoReferencia());
+            pgEntity.setHasDigitoVerificador(dto.getHasDigitoVerificador() != null && dto.getHasDigitoVerificador());
             pgEntity.setLegend(dto.getLegend());
             pgEntity.setActivo(true);
             postgresRepository.save(pgEntity);
@@ -154,6 +157,9 @@ public class GestoPagoCatalogSyncTask {
             mongoDoc.setServicio(dto.getServicio());
             mongoDoc.setProducto(dto.getProducto());
             mongoDoc.setPrecio(dto.getPrecio());
+            mongoDoc.setTipoFront(dto.getTipoFront());
+            mongoDoc.setTipoReferencia(dto.getTipoReferencia());
+            mongoDoc.setHasDigitoVerificador(dto.getHasDigitoVerificador() != null && dto.getHasDigitoVerificador());
             mongoDoc.setLegend(dto.getLegend());
             mongoDoc.setActivo(true);
             mongoRepository.save(mongoDoc);

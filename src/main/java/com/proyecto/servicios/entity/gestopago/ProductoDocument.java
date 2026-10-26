@@ -18,6 +18,9 @@ public class ProductoDocument {
     private String servicio;
     private String producto;
     private Double precio;
+    private Integer tipoFront;
+    private String tipoReferencia;
+    private Boolean hasDigitoVerificador = false;
     private String legend;
     private Boolean activo = true;
 }
