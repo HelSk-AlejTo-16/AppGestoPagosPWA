@@ -123,7 +123,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessConflictException.class)
     public ResponseEntity<GenericResponse> handleConflict(BusinessConflictException ex) {
-        return build(409, ex.getCodigo() + ": " + ex.getMessage(), HttpStatus.CONFLICT);
+        String mensaje = (ex.getMessage() != null && !ex.getMessage().isBlank())
+                ? ex.getMessage()
+                : ex.getCodigo();
+        return build(409, mensaje, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -134,13 +137,19 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RecursoNoEncontradoException.class)
     public ResponseEntity<GenericResponse> handleNotFound(RecursoNoEncontradoException ex) {
-        return build(404, ex.getCodigo() + ": " + ex.getMessage(), HttpStatus.NOT_FOUND);
+        String mensaje = (ex.getMessage() != null && !ex.getMessage().isBlank())
+                ? ex.getMessage()
+                : ex.getCodigo();
+        return build(404, mensaje, HttpStatus.NOT_FOUND);
     }
 
     @ExceptionHandler(AccesoNoAutorizadoException.class)
     public ResponseEntity<GenericResponse> handleAuthenticationFailure(AccesoNoAutorizadoException ex) {
         HttpStatus status = HttpStatus.valueOf(ex.getStatus());
-        return build(ex.getStatus(), ex.getCodigo() + ": " + ex.getMessage(), status);
+        String mensaje = (ex.getMessage() != null && !ex.getMessage().isBlank())
+                ? ex.getMessage()
+                : ex.getCodigo();
+        return build(ex.getStatus(), mensaje, status);
     }
 
     @ExceptionHandler(ErrorValidacionException.class)

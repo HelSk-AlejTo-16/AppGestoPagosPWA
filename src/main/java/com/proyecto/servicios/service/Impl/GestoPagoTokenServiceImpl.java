@@ -79,10 +79,10 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
         return tokenRepository.findByIdDistribuidorAndCodigoDispositivo(idDistribuidor, codigoDispositivo);
     }
 
-        @Override
+    @Override
     public String obtenerBearerToken(Integer idDistribuidor, String codigoDispositivo) {
         Optional<GestoPagoToken> enBd = obtenerTokenActivo(idDistribuidor, codigoDispositivo);
-        if (enBd.isPresent()) {
+        if (enBd.isPresent() && enBd.get().getToken() != null && !enBd.get().getToken().isBlank()) {
             return "Bearer " + enBd.get().getToken();
         }
         if (tokenRespaldo != null && !tokenRespaldo.isBlank()) {

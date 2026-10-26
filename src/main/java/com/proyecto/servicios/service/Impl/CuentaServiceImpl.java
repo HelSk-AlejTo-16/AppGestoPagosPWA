@@ -4,14 +4,19 @@ import com.proyecto.servicios.entity.cliente.CuentaBancaria;
 import com.proyecto.servicios.exception.BusinessConflictException;
 import com.proyecto.servicios.exception.ErrorValidacionException;
 import com.proyecto.servicios.exception.RecursoNoEncontradoException;
+import com.proyecto.servicios.model.cliente.CuentaBusquedaRequest;
+import com.proyecto.servicios.model.cliente.CuentaDepositoRequest;
 import com.proyecto.servicios.model.cliente.CuentaResponse;
+import com.proyecto.servicios.model.cliente.CuentaSaldoResponse;
 import com.proyecto.servicios.model.cliente.PaginaResponse;
 import com.proyecto.servicios.repositorys.cliente.CuentaBancariaRepository;
 import com.proyecto.servicios.service.CuentaService;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,9 +25,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.jpa.domain.Specification;
-import com.proyecto.servicios.model.cliente.CuentaBusquedaRequest;
 
 @Service
 @Transactional(readOnly = true)
@@ -115,6 +117,24 @@ public class CuentaServiceImpl implements CuentaService {
         validarPropiedadCuenta(cuenta, correoAutenticado, esAdmin);
         validarOperable(cuenta);
         return cuenta.getSaldo();
+    }
+
+    @Override
+    @Transactional
+    public CuentaSaldoResponse depositar(CuentaDepositoRequest request, String correoAutenticado, boolean esAdmin) {
+        CuentaBancaria cuenta = cuentaRepository.findByNumeroCuenta(request.numeroCuenta())
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "CUENTA_NO_ENCONTRADA", "No se encontró la cuenta bancaria solicitada."));
+        validarPropiedadCuenta(cuenta, correoAutenticado, esAdmin);
+        validarOperable(cuenta);
+
+        cuentaRepository.abonarSaldo(cuenta.getIdBancaria(), request.monto());
+
+        BigDecimal nuevoSaldo = cuentaRepository.findById(cuenta.getIdBancaria())
+                .map(CuentaBancaria::getSaldo)
+                .orElse(cuenta.getSaldo().add(request.monto()));
+
+        return new CuentaSaldoResponse(cuenta.getNumeroCuenta(), nuevoSaldo);
     }
 
     private void validarPropiedadCuenta(CuentaBancaria cuenta, String correoAutenticado, boolean esAdmin) {

@@ -29,6 +29,15 @@ public class ProductoEntity {
     @Column(name = "precio")
     private Double precio;
 
+    @Column(name = "tipo_front")
+    private Integer tipoFront;
+
+    @Column(name = "tipo_referencia")
+    private String tipoReferencia;
+
+    @Column(name = "has_digito_verificador")
+    private Boolean hasDigitoVerificador = false;
+
     @Column(name = "legend", columnDefinition = "TEXT")
     private String legend;
 

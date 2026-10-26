@@ -1,7 +1,9 @@
 package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.model.cliente.CuentaBusquedaRequest;
+import com.proyecto.servicios.model.cliente.CuentaDepositoRequest;
 import com.proyecto.servicios.model.cliente.CuentaResponse;
+import com.proyecto.servicios.model.cliente.CuentaSaldoResponse;
 import com.proyecto.servicios.model.cliente.PaginaResponse;
 
 import java.math.BigDecimal;
@@ -23,4 +25,14 @@ public interface CuentaService {
     BigDecimal obtenerSaldo(String numeroCuenta, String correoAutenticado, boolean esAdmin);
 
     void validarCuentaOperable(String numeroCuenta);
+
+    /**
+     * Agrega fondos a una cuenta bancaria activa (depósito de saldo).
+     *
+     * @param request           Datos del depósito (cuenta, monto, concepto)
+     * @param correoAutenticado Correo del usuario en sesión
+     * @param esAdmin           Si es administrador
+     * @return Respuesta con número de cuenta y saldo actualizado
+     */
+    CuentaSaldoResponse depositar(CuentaDepositoRequest request, String correoAutenticado, boolean esAdmin);
 }

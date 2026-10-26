@@ -44,7 +44,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/clientes/buscar").hasAuthority("ROLE_ADMIN")
 
                         // Cuentas: cada usuario solo ve las suyas (se filtra en el servicio); admin ve todas
-                        .requestMatchers(HttpMethod.POST, "/cuentas/buscar", "/cuentas/saldo")
+                        .requestMatchers(HttpMethod.POST, "/cuentas/buscar", "/cuentas/saldo", "/cuentas/depositar")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+
+                        // Pagos de servicios y recargas: transacciones y consulta de historial
+                        .requestMatchers(HttpMethod.POST, "/pagos/**")
                         .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
 
                         .anyRequest().hasAnyAuthority("ROLE_USER", "ROLE_ADMIN"))

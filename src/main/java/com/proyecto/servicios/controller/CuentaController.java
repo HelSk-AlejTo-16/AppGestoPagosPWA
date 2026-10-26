@@ -3,6 +3,7 @@ package com.proyecto.servicios.controller;
 import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.cliente.CuentaBusquedaRequest;
 import com.proyecto.servicios.model.cliente.CuentaConsultaRequest;
+import com.proyecto.servicios.model.cliente.CuentaDepositoRequest;
 import com.proyecto.servicios.model.cliente.CuentaSaldoResponse;
 import com.proyecto.servicios.service.CuentaService;
 import jakarta.validation.Valid;
@@ -43,6 +44,17 @@ public class CuentaController {
                 request.numeroCuenta(), authentication.getName(), esAdmin(authentication));
         return ResponseEntity.ok(GenericResponse.ok("Consulta exitosa.",
                 new CuentaSaldoResponse(request.numeroCuenta(), saldo)));
+    }
+
+    /**
+     * Permite agregar fondos (depósito) a una cuenta bancaria activa.
+     */
+    @PostMapping("/depositar")
+    public ResponseEntity<GenericResponse> depositar(@Valid @RequestBody CuentaDepositoRequest request,
+                                                     Authentication authentication) {
+        CuentaSaldoResponse response = cuentaService.depositar(
+                request, authentication.getName(), esAdmin(authentication));
+        return ResponseEntity.ok(GenericResponse.ok("Depósito realizado exitosamente.", response));
     }
 
     private boolean esAdmin(Authentication authentication) {

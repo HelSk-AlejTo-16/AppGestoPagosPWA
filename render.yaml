@@ -34,6 +34,10 @@ services:
         generateValue: true
       - key: MONGODB_URI
         sync: false
+      - key: GESTOPAGO_STATIC_TOKEN
+        sync: false
+      - key: GESTOPAGO_API_KEY
+        sync: false
 
 databases:
   - name: app-gesto-pagos-db
