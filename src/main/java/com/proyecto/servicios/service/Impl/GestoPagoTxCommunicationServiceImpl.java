@@ -10,6 +10,7 @@ import com.proyecto.servicios.exception.GestoPagoTimeoutException;
 import com.proyecto.servicios.model.gestopago.tx.GestoPagoTxResponse;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import com.proyecto.servicios.service.GestoPagoTxCommunicationService;
+import com.proyecto.servicios.util.MaskingUtils;
 import feign.FeignException;
 import feign.RetryableException;
 import jakarta.xml.bind.JAXBContext;
@@ -67,7 +68,7 @@ public class GestoPagoTxCommunicationServiceImpl implements GestoPagoTxCommunica
                                                    String upc) {
         String horaLocal = LocalDateTime.now().format(FORMATO_HORA_LOCAL);
         String montoPago = monto.setScale(2, RoundingMode.HALF_UP).toPlainString();
-        String refEnmascarada = enmascararReferencia(referencia);
+        String refEnmascarada = MaskingUtils.enmascararReferencia(referencia);
 
         log.info("Procesando tx para pasarela GestoPago: idServicio={}, idProducto={}, ref={}, monto={}, upc={}",
                 idServicio, idProducto, refEnmascarada, montoPago, upc);
@@ -116,23 +117,24 @@ public class GestoPagoTxCommunicationServiceImpl implements GestoPagoTxCommunica
                     upc
             );
 
-            log.info("Respuesta cruda recibida de sendTx.do para UPC {}: {}", upc, rawResponse);
+            log.info("Respuesta recibida de sendTx.do para UPC {} ({} bytes)",
+                    upc, rawResponse != null ? rawResponse.length() : 0);
             return parsearRespuesta(rawResponse, upc);
 
         } catch (RetryableException e) {
             if (e.getCause() instanceof SocketTimeoutException) {
-                log.error("Timeout de red al invocar sendTx.do para UPC {}: {}", upc, e.getMessage());
+                log.error("Timeout de red al invocar sendTx.do para UPC {}", upc);
                 throw new GestoPagoTimeoutException("Timeout al invocar pasarela GestoPago sendTx.do", e);
             }
-            log.error("Error de reintento de conexión con sendTx.do para UPC {}: {}", upc, e.getMessage());
+            log.error("Error de reintento de conexión con sendTx.do para UPC {} ({})", upc, e.getClass().getSimpleName());
             throw new GestoPagoCommunicationException("Fallo de comunicación con pasarela GestoPago", e);
 
         } catch (FeignException.Unauthorized | FeignException.Forbidden e) {
-            log.error("Autenticación rechazada por GestoPago sendTx.do (HTTP {}): {}", e.status(), e.getMessage());
+            log.error("Autenticación rechazada por GestoPago sendTx.do (HTTP {}) para UPC {}", e.status(), upc);
             throw new GestoPagoAuthException("GestoPago rechazó la autenticación del token distribuidor", e);
 
         } catch (FeignException e) {
-            log.error("GestoPago respondió con error HTTP {} para UPC {}: {}", e.status(), upc, e.getMessage());
+            log.error("GestoPago respondió con error HTTP {} para UPC {}", e.status(), upc);
             throw new GestoPagoCommunicationException("Error de pasarela GestoPago HTTP " + e.status(), e);
         }
     }
@@ -158,7 +160,7 @@ public class GestoPagoTxCommunicationServiceImpl implements GestoPagoTxCommunica
                 Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
                 return (GestoPagoTxResponse) unmarshaller.unmarshal(new StringReader(limpio));
             } catch (JAXBException e) {
-                log.warn("Fallo al parsear XML de sendTx.do, intentando extraer información: {}", e.getMessage());
+                log.warn("Fallo al parsear XML de sendTx.do para UPC {}", upc);
             }
         }
 
@@ -171,21 +173,14 @@ public class GestoPagoTxCommunicationServiceImpl implements GestoPagoTxCommunica
                 fallback.setTexto(root.has("message") ? root.get("message").asText() : "Error devuelto en formato JSON");
                 return fallback;
             } catch (Exception jsonEx) {
-                log.warn("Fallo al parsear JSON devuelto por GestoPago: {}", jsonEx.getMessage());
+                log.warn("Fallo al parsear JSON devuelto por GestoPago para UPC {}", upc);
             }
         }
 
-        // Fallback genérico de rechazo
+        // Fallback genérico de rechazo sin exponer contenido interno crudo
         GestoPagoTxResponse gen = new GestoPagoTxResponse();
         gen.setCodigo("99");
-        gen.setTexto("Respuesta de proveedor no interpretable: " + (limpio.length() > 100 ? limpio.substring(0, 100) : limpio));
+        gen.setTexto("Respuesta del proveedor no interpretable.");
         return gen;
-    }
-
-    private String enmascararReferencia(String ref) {
-        if (ref == null) return "null";
-        int len = ref.length();
-        if (len <= 4) return "****";
-        return ref.substring(0, 2) + "*".repeat(len - 4) + ref.substring(len - 2);
     }
 }

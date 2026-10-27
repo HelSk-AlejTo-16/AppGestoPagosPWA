@@ -45,3 +45,8 @@ bin/
 # JVM fatal-error and compiler-replay diagnostics
 hs_err_pid*.log
 replay_pid*.log
+
+# Secretos y variables de entorno locales (NUNCA versionar)
+.env
+.env.*
+!.env.example

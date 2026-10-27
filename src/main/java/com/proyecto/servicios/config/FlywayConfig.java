@@ -31,6 +31,7 @@ public class FlywayConfig {
                 .table(historyTable)
                 .schemas(schema)
                 .load();
+        flyway.repair();
         flyway.migrate();
         return flyway;
     }

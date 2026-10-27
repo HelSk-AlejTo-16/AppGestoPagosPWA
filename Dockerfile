@@ -14,6 +14,7 @@ FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /opt/app/app.jar /app/app.jar
+COPY --from=build --chown=10001:10001 /workspace/productos.xml /app/productos.xml
 
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+UseContainerSupport"
 EXPOSE 8080
