@@ -25,10 +25,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final SecurityErrorHandler securityErrorHandler;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtService jwtService,
+                                   UserDetailsService userDetailsService,
+                                   SecurityErrorHandler securityErrorHandler) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
+        this.securityErrorHandler = securityErrorHandler;
     }
 
     @Override
@@ -38,9 +42,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authorization != null && authorization.startsWith("Bearer ")) {
             String token = authorization.substring(7);
             try {
+                if (jwtService.esToken2FA(token)) {
+                    log.debug("Petición rechazada: el token recibido es un ticket de 2FA y no tiene acceso a recursos.");
+                    SecurityContextHolder.clearContext();
+                    chain.doFilter(request, response);
+                    return;
+                }
+
                 String correo = jwtService.extraerCorreo(token);
+                String sid = jwtService.extraerSessionId(token);
+
                 if (SecurityContextHolder.getContext().getAuthentication() == null) {
                     UserDetails user = userDetailsService.loadUserByUsername(correo);
+
+                    // Control de sesión única concurrente (Web vs Móvil)
+                    if (user instanceof ClienteUserDetails clienteUser) {
+                        if (sid != null && clienteUser.getIdSesionActiva() != null
+                                && !clienteUser.getIdSesionActiva().equals(sid)) {
+                            log.warn("Sesión inválida para {}: token sid ({}) != BD sid ({}) [Plataforma: {}]",
+                                    correo, sid, clienteUser.getIdSesionActiva(), clienteUser.getPlataformaActiva());
+                            SecurityContextHolder.clearContext();
+                            securityErrorHandler.escribirSesionInvalida(response, clienteUser.getPlataformaActiva());
+                            return;
+                        }
+                    }
+
                     boolean recoveryToken = jwtService.esTokenDeRecuperacion(token);
                     boolean recoveryAuthority = user.getAuthorities().stream()
                             .map(GrantedAuthority::getAuthority)

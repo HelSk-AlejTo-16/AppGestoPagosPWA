@@ -9,6 +9,18 @@ public record LoginRequest(
         String correo,
 
         @NotBlank(message = "La contraseña es obligatoria")
-        String password
+        String password,
+
+        String plataforma
 ) {
+    public LoginRequest(String correo, String password) {
+        this(correo, password, "MOVIL");
+    }
+
+    public String obtenerPlataformaNormalizada() {
+        if (plataforma == null || plataforma.isBlank()) {
+            return "MOVIL";
+        }
+        return plataforma.trim().toUpperCase();
+    }
 }

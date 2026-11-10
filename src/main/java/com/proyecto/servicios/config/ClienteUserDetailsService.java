@@ -26,9 +26,13 @@ public class ClienteUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado."));
         boolean activo = usuario.isActivo() && (usuario.getCliente() == null || usuario.getCliente().isActivo());
         String autoridad = !activo ? "ROLE_RECOVERY" : (usuario.getRol() != null ? usuario.getRol() : "ROLE_USER");
-        return User.withUsername(usuario.getCorreo())
-                .password(usuario.getPassword())
-                .authorities(List.of(new SimpleGrantedAuthority(autoridad)))
-                .build();
+        return new ClienteUserDetails(
+                usuario.getCorreo(),
+                usuario.getPassword(),
+                usuario.getIdSesionActiva(),
+                usuario.getPlataformaActiva(),
+                List.of(new SimpleGrantedAuthority(autoridad)),
+                true
+        );
     }
 }

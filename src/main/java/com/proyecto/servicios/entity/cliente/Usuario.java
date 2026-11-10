@@ -55,6 +55,21 @@ public class Usuario {
     @Column(name = "rol", nullable = false, length = 20)
     private String rol = "ROLE_USER";
 
+    @Column(name = "codigo_2fa", length = 100)
+    private String codigo2fa;
+
+    @Column(name = "expiracion_2fa")
+    private OffsetDateTime expiracion2fa;
+
+    @Column(name = "id_sesion_activa", length = 100)
+    private String idSesionActiva;
+
+    @Column(name = "plataforma_activa", length = 20)
+    private String plataformaActiva;
+
+    @Column(name = "fecha_inicio_sesion")
+    private OffsetDateTime fechaInicioSesion;
+
     @PrePersist
     void onCreate() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);

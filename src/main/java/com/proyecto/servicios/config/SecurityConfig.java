@@ -29,8 +29,12 @@ public class SecurityConfig {
                         .accessDeniedHandler(securityErrorHandler))
                 .authorizeHttpRequests(authorize -> authorize
                         // Endpoints públicos
-                        .requestMatchers(HttpMethod.POST, "/auth/login", "/clientes").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/2fa/**", "/clientes").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
+
+                        // Logout autenticado
+                        .requestMatchers(HttpMethod.POST, "/auth/logout")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN", "ROLE_RECOVERY")
 
                         // Perfil propio: la identidad sale del token (evita BOLA / IDOR)
                         .requestMatchers(HttpMethod.GET, "/usuarios/me")
