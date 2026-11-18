@@ -17,7 +17,10 @@ public class JwtService {
 
     public static final String RECOVERY_SCOPE = "RECOVERY";
     public static final String USER_SCOPE = "USER";
+    public static final String TWO_FACTOR_SCOPE = "2FA_TICKET";
     private static final String SCOPE_CLAIM = "scope";
+    private static final String SESSION_CLAIM = "sid";
+    private static final String PLATFORM_CLAIM = "plat";
 
     private final SecretKey signingKey;
     private final long expirationMillis;
@@ -42,18 +45,53 @@ public class JwtService {
     }
 
     public String generarToken(String correo, boolean recoveryOnly) {
+        return generarTokenConSesion(correo, recoveryOnly, null, null);
+    }
+
+    public String generarTicket2FA(String correo, String plataforma) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(correo)
-                .claim(SCOPE_CLAIM, recoveryOnly ? RECOVERY_SCOPE : USER_SCOPE)
+                .claim(SCOPE_CLAIM, TWO_FACTOR_SCOPE)
+                .claim(PLATFORM_CLAIM, plataforma != null ? plataforma : "MOVIL")
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plusMillis(expirationMillis)))
+                .expiration(Date.from(now.plusMillis(300000))) // 5 minutos de vigencia
                 .signWith(signingKey)
                 .compact();
     }
 
+    public String generarTokenConSesion(String correo, boolean recoveryOnly, String idSesion, String plataforma) {
+        Instant now = Instant.now();
+        var builder = Jwts.builder()
+                .subject(correo)
+                .claim(SCOPE_CLAIM, recoveryOnly ? RECOVERY_SCOPE : USER_SCOPE)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(expirationMillis)));
+
+        if (idSesion != null) {
+            builder.claim(SESSION_CLAIM, idSesion);
+        }
+        if (plataforma != null) {
+            builder.claim(PLATFORM_CLAIM, plataforma);
+        }
+
+        return builder.signWith(signingKey).compact();
+    }
+
     public String extraerCorreo(String token) {
         return extraerClaims(token).getSubject();
+    }
+
+    public String extraerSessionId(String token) {
+        return extraerClaims(token).get(SESSION_CLAIM, String.class);
+    }
+
+    public String extraerPlataforma(String token) {
+        return extraerClaims(token).get(PLATFORM_CLAIM, String.class);
+    }
+
+    public boolean esToken2FA(String token) {
+        return TWO_FACTOR_SCOPE.equals(extraerClaims(token).get(SCOPE_CLAIM, String.class));
     }
 
     public boolean esValido(String token, String correo) {

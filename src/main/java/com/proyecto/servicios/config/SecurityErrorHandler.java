@@ -41,6 +41,16 @@ public class SecurityErrorHandler implements AuthenticationEntryPoint, AccessDen
         escribir(response, HttpStatus.FORBIDDEN, "No tiene permiso para acceder a este recurso.");
     }
 
+    public void escribirSesionInvalida(HttpServletResponse response, String plataformaActiva) throws IOException {
+        String mensaje = "Tu sesión ha sido finalizada porque se inició sesión desde otra plataforma";
+        if (plataformaActiva != null && !plataformaActiva.isBlank()) {
+            mensaje += " (" + plataformaActiva + ").";
+        } else {
+            mensaje += ".";
+        }
+        escribir(response, HttpStatus.UNAUTHORIZED, mensaje);
+    }
+
     private void escribir(HttpServletResponse response, HttpStatus status, String mensaje) throws IOException {
         GenericResponse cuerpo = new GenericResponse();
         cuerpo.setCodigo(status.value());

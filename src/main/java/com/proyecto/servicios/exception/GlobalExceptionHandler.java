@@ -41,7 +41,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(GestoPagoTimeoutException.class)
     public ResponseEntity<GenericResponse> handleTimeout(GestoPagoTimeoutException ex) {
         log.error("Timeout con GestoPago: {}", ex.getMessage());
-        return build(92, "El proveedor de pagos no respondió a tiempo.", HttpStatus.GATEWAY_TIMEOUT);
+        String mensaje = (ex.getMessage() != null && !ex.getMessage().isBlank())
+                ? ex.getMessage()
+                : "El proveedor de pagos no respondió a tiempo.";
+        return build(92, mensaje, HttpStatus.GATEWAY_TIMEOUT);
     }
 
     @ExceptionHandler(GestoPagoCommunicationException.class)

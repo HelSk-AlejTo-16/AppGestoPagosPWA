@@ -5,6 +5,7 @@ import com.proyecto.servicios.entity.cliente.Usuario;
 import com.proyecto.servicios.entity.gestopago.ProductoEntity;
 import com.proyecto.servicios.entity.pagos.EstadoPagoServicio;
 import com.proyecto.servicios.entity.pagos.PagoServicioEntity;
+import com.proyecto.servicios.exception.AccesoNoAutorizadoException;
 import com.proyecto.servicios.exception.BusinessConflictException;
 import com.proyecto.servicios.exception.ErrorValidacionException;
 import com.proyecto.servicios.exception.GestoPagoTimeoutException;
@@ -12,6 +13,7 @@ import com.proyecto.servicios.exception.RecursoNoEncontradoException;
 import com.proyecto.servicios.model.cliente.PaginaResponse;
 import com.proyecto.servicios.model.gestopago.tx.GestoPagoTxResponse;
 import com.proyecto.servicios.model.pagos.PagoBusquedaRequest;
+import com.proyecto.servicios.model.pagos.PagoConciliacionRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioResponse;
 import com.proyecto.servicios.model.pagos.RecargaTelefonicaRequest;
@@ -21,6 +23,7 @@ import com.proyecto.servicios.repositorys.gestopago.ProductoPostgresRepository;
 import com.proyecto.servicios.repositorys.pagos.PagoServicioRepository;
 import com.proyecto.servicios.service.GestoPagoTxCommunicationService;
 import com.proyecto.servicios.service.PagoServicioService;
+import com.proyecto.servicios.util.MaskingUtils;
 import com.proyecto.servicios.util.ReferenciaValidator;
 import com.proyecto.servicios.util.UpcGenerator;
 import jakarta.persistence.criteria.Predicate;
@@ -70,8 +73,11 @@ public class PagoServicioServiceImpl implements PagoServicioService {
 
     @Override
     public PagoServicioResponse procesarPago(PagoServicioRequest request, String correoUsuarioAutenticado) {
-        log.info("Iniciando procesamiento de pago de servicio: cuenta={}, idProducto={}, monto={}",
-                request.numCuenta(), request.idProducto(), request.monto());
+        log.info("Iniciando procesamiento de pago de servicio: cuenta={}, idProducto={}, ref={}, monto={}",
+                MaskingUtils.enmascararCuenta(request.numCuenta()),
+                request.idProducto(),
+                MaskingUtils.enmascararReferencia(request.referencia()),
+                request.monto());
 
         // 1. Validar usuario autenticado y firma obligatoria (PIN/contraseña)
         validarFirmaYUsuario(correoUsuarioAutenticado, request.pinAutorizacion());
@@ -80,13 +86,13 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         CuentaBancaria cuenta = validarCuentaBancaria(request.numCuenta(), correoUsuarioAutenticado);
 
         // 3. Validar producto de servicios y referencia del recibo
-        ProductoEntity producto = validarProductoServicio(request.idProducto(), request.referencia(), request.monto());
+        ProductoEntity producto = validarProductoServicio(request.idServicio(), request.idProducto(), request.referencia(), request.monto());
 
         // 4. Ejecutar flujo transaccional con débito y Two-Phase Rollback
         return ejecutarTransaccionInterna(
                 cuenta,
-                request.idServicio(),
-                request.idProducto(),
+                String.valueOf(producto.getIdServicio()),
+                String.valueOf(producto.getIdProducto()),
                 request.referencia(),
                 request.monto(),
                 producto,
@@ -97,7 +103,10 @@ public class PagoServicioServiceImpl implements PagoServicioService {
     @Override
     public PagoServicioResponse procesarRecarga(RecargaTelefonicaRequest request, String correoUsuarioAutenticado) {
         log.info("Iniciando procesamiento de recarga telefónica: cuenta={}, idProducto={}, telefono={}, monto={}",
-                request.numCuenta(), request.idProducto(), request.telefono(), request.monto());
+                MaskingUtils.enmascararCuenta(request.numCuenta()),
+                request.idProducto(),
+                MaskingUtils.enmascararReferencia(request.telefono()),
+                request.monto());
 
         // 1. Validar usuario autenticado y firma obligatoria (PIN/contraseña)
         validarFirmaYUsuario(correoUsuarioAutenticado, request.pinAutorizacion());
@@ -106,13 +115,13 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         CuentaBancaria cuenta = validarCuentaBancaria(request.numCuenta(), correoUsuarioAutenticado);
 
         // 3. Validar producto de tiempo aire y número celular a 10 dígitos
-        ProductoEntity producto = validarProductoRecarga(request.idProducto(), request.telefono(), request.monto());
+        ProductoEntity producto = validarProductoRecarga(request.idServicio(), request.idProducto(), request.telefono(), request.monto());
 
         // 4. Ejecutar flujo transaccional con débito y Two-Phase Rollback
         return ejecutarTransaccionInterna(
                 cuenta,
-                request.idServicio(),
-                request.idProducto(),
+                String.valueOf(producto.getIdServicio()),
+                String.valueOf(producto.getIdProducto()),
                 request.telefono(),
                 request.monto(),
                 producto,
@@ -129,6 +138,9 @@ public class PagoServicioServiceImpl implements PagoServicioService {
             ProductoEntity producto,
             String mensajeExito
     ) {
+        String cuentaEnmascarada = MaskingUtils.enmascararCuenta(cuenta.getNumeroCuenta());
+        String refEnmascarada = MaskingUtils.enmascararReferencia(referenciaODestino);
+
         // Prevención de Transacciones Duplicadas en ventana reciente (sendTx_duplicated)
         OffsetDateTime ventanaDuplicado = OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5);
         boolean transaccionDuplicada = pagoRepository.existsByCuenta_IdBancariaAndIdProductoAndReferenciaAndMontoAndEstadoInAndCreadoEnAfter(
@@ -141,7 +153,7 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         );
         if (transaccionDuplicada) {
             log.warn("Transacción duplicada detectada para cuenta {}, producto {}, ref {}, monto {}",
-                    cuenta.getNumeroCuenta(), idProducto, referenciaODestino, monto);
+                    cuentaEnmascarada, idProducto, refEnmascarada, monto);
             throw new BusinessConflictException(
                     "sendTx_duplicated",
                     "Ya se procesó recientemente una transacción idéntica para este servicio y referencia. Para evitar cobros duplicados, por favor espera unos minutos."
@@ -151,7 +163,7 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         // Reserva Atómica de Saldo (Prevención de Doble Gasto)
         int filasDebito = cuentaRepository.debitarSaldo(cuenta.getIdBancaria(), monto);
         if (filasDebito == 0) {
-            log.warn("Saldo insuficiente para cuenta {} al intentar debitar {}", cuenta.getNumeroCuenta(), monto);
+            log.warn("Saldo insuficiente para cuenta {} al intentar debitar {}", cuentaEnmascarada, monto);
             throw new BusinessConflictException(
                     "sendTx_insufficientFunds",
                     "Tu cuenta no cuenta con saldo disponible suficiente para cubrir el monto de la operación."
@@ -195,19 +207,19 @@ public class PagoServicioServiceImpl implements PagoServicioService {
                     upc
             );
         } catch (GestoPagoTimeoutException timeoutEx) {
-            // Protección de timeout: NO hacer rollback a ciegas; queda para conciliación
+            // Protección de timeout: NO hacer rollback a ciegas; queda para conciliación y retorna HTTP 504
             log.error("Timeout de comunicación con GestoPago para UPC {}: {}", upc, timeoutEx.getMessage());
             pago.setEstado(EstadoPagoServicio.PENDIENTE_CONCILIACION);
             pago.setMensajeProveedor("Timeout de comunicación con proveedor: " + timeoutEx.getMessage());
             pagoRepository.save(pago);
 
-            throw new BusinessConflictException(
-                    "TIMEOUT_PROVEEDOR",
-                    "El proveedor del servicio no respondió a tiempo. Tu transacción quedó registrada en proceso de verificación para salvaguardar tus fondos."
+            throw new GestoPagoTimeoutException(
+                    "El proveedor del servicio no respondió a tiempo. Tu transacción (UPC: " + upc + ") quedó registrada en proceso de verificación para salvaguardar tus fondos.",
+                    timeoutEx
             );
         } catch (Exception commEx) {
             // Falla de red previa a conexión: aplicar compensación / rollback inmediato
-            log.error("Fallo general de conexión para UPC {}. Aplicando rollback...", upc, commEx);
+            log.error("Fallo general de conexión para UPC {} ({}). Aplicando rollback...", upc, commEx.getClass().getSimpleName());
             cuentaRepository.abonarSaldo(cuenta.getIdBancaria(), monto);
             pago.setEstado(EstadoPagoServicio.RECHAZADO);
             pago.setMensajeProveedor("Error de conexión: " + commEx.getMessage());
@@ -255,6 +267,127 @@ public class PagoServicioServiceImpl implements PagoServicioService {
                     : "La transacción no pudo ser completada por la compañía: " + motivo + ". El monto ha sido reembolsado automáticamente a su cuenta.";
 
             throw new BusinessConflictException(codigoExcepcion, mensajeExcepcion);
+        }
+    }
+
+    @Override
+    @Transactional
+    public PagoServicioResponse conciliarPago(
+            PagoConciliacionRequest request,
+            String correoUsuarioAutenticado,
+            boolean esAdmin
+    ) {
+        String upc = request.upc().trim();
+        PagoServicioEntity pago = pagoRepository.findByUpc(upc)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "PAGO_NO_ENCONTRADO",
+                        "No se encontró ninguna transacción asociada al código UPC proporcionado."
+                ));
+
+        // Control de acceso: solo el titular de la cuenta o un administrador pueden conciliar la operación
+        if (!esAdmin) {
+            if (pago.getCuenta() == null
+                    || pago.getCuenta().getCliente() == null
+                    || pago.getCuenta().getCliente().getUsuario() == null
+                    || !pago.getCuenta().getCliente().getUsuario().getCorreo().equalsIgnoreCase(correoUsuarioAutenticado)) {
+                throw new AccessDeniedException("No tienes autorización para conciliar esta transacción.");
+            }
+        }
+
+        if (pago.getEstado() != EstadoPagoServicio.PENDIENTE_CONCILIACION) {
+            throw new BusinessConflictException(
+                    "CONCILIACION_NO_PROCEDENTE",
+                    "La transacción con UPC " + upc + " no se encuentra pendiente de conciliación (estado actual: " + pago.getEstado() + ")."
+            );
+        }
+
+        String cuentaEnmascarada = MaskingUtils.enmascararCuenta(pago.getCuenta().getNumeroCuenta());
+        log.info("Iniciando conciliación de transacción UPC {} para cuenta {}", upc, cuentaEnmascarada);
+
+        // Escenario 1: Resolución explícita tras validación con el portal del proveedor
+        if (request.procesadaPorProveedor() != null) {
+            if (Boolean.TRUE.equals(request.procesadaPorProveedor())) {
+                pago.setEstado(EstadoPagoServicio.EXITOSO);
+                pago.setCodigoRespuestaProveedor("01");
+                pago.setFolioTransaccionGp(request.folioTransaccionGp() != null && !request.folioTransaccionGp().isBlank()
+                        ? request.folioTransaccionGp().trim()
+                        : "GP-CONC-" + upc);
+                pago.setFolioAutorizacion(request.folioAutorizacion() != null && !request.folioAutorizacion().isBlank()
+                        ? request.folioAutorizacion().trim()
+                        : "AUTH-CONC-" + upc);
+                pago.setMensajeProveedor(request.observacion() != null && !request.observacion().isBlank()
+                        ? request.observacion().trim()
+                        : "Transacción confirmada mediante conciliación con proveedor.");
+                pago = pagoRepository.save(pago);
+
+                BigDecimal saldoActual = cuentaRepository.findById(pago.getCuenta().getIdBancaria())
+                        .map(CuentaBancaria::getSaldo)
+                        .orElse(pago.getCuenta().getSaldo());
+                log.info("Conciliación para UPC {} resuelta como EXITOSO.", upc);
+                return toResponse(pago, saldoActual, "Conciliación completada: la operación fue confirmada como exitosa.");
+            } else {
+                cuentaRepository.abonarSaldo(pago.getCuenta().getIdBancaria(), pago.getMonto());
+                pago.setEstado(EstadoPagoServicio.REVERTIDO);
+                pago.setCodigoRespuestaProveedor("98");
+                pago.setMensajeProveedor(request.observacion() != null && !request.observacion().isBlank()
+                        ? request.observacion().trim()
+                        : "Operación no procesada por el proveedor tras timeout. Saldo reintegrado por conciliación.");
+                pago = pagoRepository.save(pago);
+
+                BigDecimal saldoRestaurado = cuentaRepository.findById(pago.getCuenta().getIdBancaria())
+                        .map(CuentaBancaria::getSaldo)
+                        .orElse(pago.getCuenta().getSaldo());
+                log.info("Conciliación para UPC {} resuelta como REVERTIDO. Saldo reintegrado a cuenta {}.", upc, cuentaEnmascarada);
+                return toResponse(pago, saldoRestaurado, "Conciliación completada: se confirmó que el cargo no procedió en el proveedor y tu saldo ha sido reintegrado.");
+            }
+        }
+
+        // Escenario 2: Verificación automática por idempotencia reutilizando el mismo UPC original
+        GestoPagoTxResponse gpResponse = txCommunicationService.ejecutarTransaccion(
+                pago.getIdServicio(),
+                pago.getIdProducto(),
+                pago.getReferencia(),
+                pago.getMonto(),
+                pago.getUpc()
+        );
+
+        String codigo = gpResponse != null && gpResponse.getCodigo() != null ? gpResponse.getCodigo() : "99";
+        String motivo = gpResponse != null && gpResponse.getTexto() != null ? gpResponse.getTexto() : "";
+        boolean yaProcesadaPorIdempotencia = "03".equals(codigo)
+                || motivo.toLowerCase(Locale.ROOT).contains("duplicad")
+                || motivo.contains("sendTx_duplicated");
+
+        if ((gpResponse != null && gpResponse.isAprobada()) || yaProcesadaPorIdempotencia) {
+            pago.setEstado(EstadoPagoServicio.EXITOSO);
+            pago.setCodigoRespuestaProveedor("01");
+            pago.setFolioTransaccionGp(gpResponse != null && gpResponse.getFolio() != null
+                    ? gpResponse.getFolio()
+                    : "GP-IDEMP-" + upc);
+            pago.setFolioAutorizacion(gpResponse != null && gpResponse.getAutorizacion() != null
+                    ? gpResponse.getAutorizacion()
+                    : "AUTH-IDEMP-" + upc);
+            pago.setMensajeProveedor(yaProcesadaPorIdempotencia
+                    ? "Confirmada por idempotencia del proveedor (UPC previamente procesado)."
+                    : (motivo.isBlank() ? "APROBADA EN CONCILIACION" : motivo));
+            pago = pagoRepository.save(pago);
+
+            BigDecimal saldoActual = cuentaRepository.findById(pago.getCuenta().getIdBancaria())
+                    .map(CuentaBancaria::getSaldo)
+                    .orElse(pago.getCuenta().getSaldo());
+            log.info("Conciliación idempotente para UPC {} confirmada como EXITOSO.", upc);
+            return toResponse(pago, saldoActual, "Conciliación completada: la operación fue confirmada como exitosa con el proveedor.");
+        } else {
+            cuentaRepository.abonarSaldo(pago.getCuenta().getIdBancaria(), pago.getMonto());
+            pago.setEstado(EstadoPagoServicio.REVERTIDO);
+            pago.setCodigoRespuestaProveedor(codigo);
+            pago.setMensajeProveedor("Rechazada en verificación de conciliación (" + motivo + "). Saldo reintegrado.");
+            pago = pagoRepository.save(pago);
+
+            BigDecimal saldoRestaurado = cuentaRepository.findById(pago.getCuenta().getIdBancaria())
+                    .map(CuentaBancaria::getSaldo)
+                    .orElse(pago.getCuenta().getSaldo());
+            log.info("Conciliación idempotente para UPC {} resultó no procesada. Saldo reintegrado a cuenta {}.", upc, cuentaEnmascarada);
+            return toResponse(pago, saldoRestaurado, "Conciliación completada: el proveedor confirmó que la operación no procedió y tu saldo ha sido reintegrado.");
         }
     }
 
@@ -315,8 +448,8 @@ public class PagoServicioServiceImpl implements PagoServicioService {
     // Métodos Auxiliares de Validación
     // ==========================================
 
-    private ProductoEntity validarProductoServicio(String idProductoStr, String referencia, BigDecimal monto) {
-        ProductoEntity producto = obtenerYValidarProductoBase(idProductoStr);
+    private ProductoEntity validarProductoServicio(String idServicioStr, String idProductoStr, String referencia, BigDecimal monto) {
+        ProductoEntity producto = obtenerYValidarProductoBase(idServicioStr, idProductoStr);
 
         if (producto.getTipoFront() != null && producto.getTipoFront() == 1) {
             throw new BusinessConflictException(
@@ -331,8 +464,8 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         return producto;
     }
 
-    private ProductoEntity validarProductoRecarga(String idProductoStr, String telefono, BigDecimal monto) {
-        ProductoEntity producto = obtenerYValidarProductoBase(idProductoStr);
+    private ProductoEntity validarProductoRecarga(String idServicioStr, String idProductoStr, String telefono, BigDecimal monto) {
+        ProductoEntity producto = obtenerYValidarProductoBase(idServicioStr, idProductoStr);
 
         if (producto.getTipoFront() != null && producto.getTipoFront() != 1) {
             throw new BusinessConflictException(
@@ -347,12 +480,14 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         return producto;
     }
 
-    private ProductoEntity obtenerYValidarProductoBase(String idProductoStr) {
+    private ProductoEntity obtenerYValidarProductoBase(String idServicioStr, String idProductoStr) {
+        Integer idServicio;
         Integer idProducto;
         try {
+            idServicio = Integer.parseInt(idServicioStr.trim());
             idProducto = Integer.parseInt(idProductoStr.trim());
         } catch (NumberFormatException e) {
-            throw new ErrorValidacionException("El identificador del producto seleccionado no es válido.");
+            throw new ErrorValidacionException("El identificador del servicio o producto seleccionado no es válido.");
         }
 
         ProductoEntity producto = productoRepository.findByIdProducto(idProducto)
@@ -363,6 +498,13 @@ public class PagoServicioServiceImpl implements PagoServicioService {
         if (!Boolean.TRUE.equals(producto.getActivo())) {
             throw new BusinessConflictException(
                     "PRODUCTO_INACTIVO", "El producto o servicio seleccionado no está disponible en este momento."
+            );
+        }
+
+        if (producto.getIdServicio() != null && !producto.getIdServicio().equals(idServicio)) {
+            throw new BusinessConflictException(
+                    "SERVICIO_NO_COINCIDE",
+                    "El producto seleccionado no pertenece a la compañía o servicio indicado. Por favor, verifica tu selección."
             );
         }
 
@@ -409,8 +551,10 @@ public class PagoServicioServiceImpl implements PagoServicioService {
                 );
             } else {
                 usuarioRepository.save(usuario);
-                throw new ErrorValidacionException(
-                        "PIN_INVALIDO: La contraseña de autorización es incorrecta. Intentos restantes: " + (3 - intentos)
+                throw new AccesoNoAutorizadoException(
+                        "PIN_INVALIDO",
+                        "La contraseña de autorización es incorrecta. Intentos restantes: " + (3 - intentos),
+                        401
                 );
             }
         }

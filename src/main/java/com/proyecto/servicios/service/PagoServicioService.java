@@ -2,6 +2,7 @@ package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.model.cliente.PaginaResponse;
 import com.proyecto.servicios.model.pagos.PagoBusquedaRequest;
+import com.proyecto.servicios.model.pagos.PagoConciliacionRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioResponse;
 import com.proyecto.servicios.model.pagos.RecargaTelefonicaRequest;
@@ -28,6 +29,26 @@ public interface PagoServicioService {
      * @return Comprobante con folio de autorización, UPC y saldo actualizado
      */
     PagoServicioResponse procesarRecarga(RecargaTelefonicaRequest request, String correoUsuarioAutenticado);
+
+    /**
+     * Resuelve y concilia una operación financiera que quedó en estado {@code PENDIENTE_CONCILIACION}
+     * debido a un tiempo de espera agotado (timeout) con el proveedor externo.
+     * <p>
+     * Si el proveedor procesó la transacción (o responde idempotentemente que el UPC ya fue aplicado),
+     * la operación pasa a {@code EXITOSO} conservando el cargo original. Si se confirma que el proveedor
+     * no procesó la solicitud, se reintegra atómicamente el saldo a la cuenta del cliente y la operación
+     * pasa a estado {@code REVERTIDO}.
+     *
+     * @param request                  Datos de conciliación (UPC y dictamen opcional)
+     * @param correoUsuarioAutenticado Correo del usuario en sesión
+     * @param esAdmin                  Indica si el usuario posee rol administrativo
+     * @return Comprobante actualizado tras la conciliación
+     */
+    PagoServicioResponse conciliarPago(
+            PagoConciliacionRequest request,
+            String correoUsuarioAutenticado,
+            boolean esAdmin
+    );
 
     /**
      * Consulta el historial paginado de pagos de servicios y recargas.

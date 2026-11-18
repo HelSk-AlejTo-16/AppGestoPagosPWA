@@ -3,6 +3,7 @@ package com.proyecto.servicios.controller;
 import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.cliente.PaginaResponse;
 import com.proyecto.servicios.model.pagos.PagoBusquedaRequest;
+import com.proyecto.servicios.model.pagos.PagoConciliacionRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioResponse;
 import com.proyecto.servicios.model.pagos.RecargaTelefonicaRequest;
@@ -52,11 +53,28 @@ public class PagoServicioController {
     }
 
     /**
+     * Concilia y resuelve el estado definitivo de una operación en {@code PENDIENTE_CONCILIACION}
+     * tras un tiempo de espera agotado (timeout) con el proveedor externo.
+     */
+    @PostMapping("/conciliar")
+    public ResponseEntity<GenericResponse> conciliarPago(
+            @Valid @RequestBody PagoConciliacionRequest request,
+            Authentication authentication
+    ) {
+        PagoServicioResponse response = pagoService.conciliarPago(
+                request,
+                authentication.getName(),
+                esAdmin(authentication)
+        );
+        return ResponseEntity.ok(GenericResponse.ok(response.mensaje(), response));
+    }
+
+    /**
      * Consulta el historial paginado de pagos de servicios y recargas de tiempo aire.
      * Un usuario común solo puede visualizar transacciones pertenecientes a sus cuentas bancarias.
      * Los administradores pueden visualizar la totalidad o filtrar por cuenta.
      */
-    @PostMapping({"/servicios/historial", "/historial"})
+    @PostMapping("/historial")
     public ResponseEntity<GenericResponse> consultarHistorial(
             @Valid @RequestBody PagoBusquedaRequest request,
             Authentication authentication

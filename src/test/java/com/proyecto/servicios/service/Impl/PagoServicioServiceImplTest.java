@@ -6,10 +6,12 @@ import com.proyecto.servicios.entity.cliente.Usuario;
 import com.proyecto.servicios.entity.gestopago.ProductoEntity;
 import com.proyecto.servicios.entity.pagos.EstadoPagoServicio;
 import com.proyecto.servicios.entity.pagos.PagoServicioEntity;
+import com.proyecto.servicios.exception.AccesoNoAutorizadoException;
 import com.proyecto.servicios.exception.BusinessConflictException;
 import com.proyecto.servicios.exception.ErrorValidacionException;
 import com.proyecto.servicios.exception.GestoPagoTimeoutException;
 import com.proyecto.servicios.model.gestopago.tx.GestoPagoTxResponse;
+import com.proyecto.servicios.model.pagos.PagoConciliacionRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioRequest;
 import com.proyecto.servicios.model.pagos.PagoServicioResponse;
 import com.proyecto.servicios.model.pagos.RecargaTelefonicaRequest;
@@ -229,7 +231,7 @@ class PagoServicioServiceImplTest {
     }
 
     @Test
-    @DisplayName("PIN inválido: debe incrementar intentos fallidos y no tocar el saldo")
+    @DisplayName("PIN inválido: debe incrementar intentos fallidos, lanzar AccesoNoAutorizadoException (HTTP 401) y no tocar el saldo")
     void testProcesarPago_PinInvalido() {
         PagoServicioRequest request = new PagoServicioRequest(
                 numCuenta, "WrongPassword", "1", "11", "CFE123456789", new BigDecimal("100.00")
@@ -238,10 +240,12 @@ class PagoServicioServiceImplTest {
         when(usuarioRepository.findByCorreoIgnoreCase(correo)).thenReturn(Optional.of(usuarioMock));
         when(passwordEncoder.matches("WrongPassword", usuarioMock.getPassword())).thenReturn(false);
 
-        ErrorValidacionException ex = assertThrows(ErrorValidacionException.class, () ->
+        AccesoNoAutorizadoException ex = assertThrows(AccesoNoAutorizadoException.class, () ->
                 pagoService.procesarPago(request, correo));
 
-        assertTrue(ex.getMessage().contains("PIN_INVALIDO"));
+        assertEquals("PIN_INVALIDO", ex.getCodigo());
+        assertEquals(401, ex.getStatus());
+        assertTrue(ex.getMessage().contains("Intentos restantes: 2"));
         assertEquals(1, usuarioMock.getIntentosFallidos());
         verify(usuarioRepository).save(usuarioMock);
         verify(cuentaRepository, never()).debitarSaldo(any(), any());
@@ -348,7 +352,7 @@ class PagoServicioServiceImplTest {
     }
 
     @Test
-    @DisplayName("Timeout de proveedor: DEBE marcar como PENDIENTE_CONCILIACION sin reembolso ciego")
+    @DisplayName("Timeout de proveedor: DEBE marcar como PENDIENTE_CONCILIACION sin reembolso ciego y lanzar GestoPagoTimeoutException (HTTP 504)")
     void testProcesarPago_TimeoutProveedor_MarcaPendienteConciliacion() {
         PagoServicioRequest request = new PagoServicioRequest(
                 numCuenta, "Password123", "1", "11", "CFE123456789", new BigDecimal("100.00")
@@ -365,10 +369,10 @@ class PagoServicioServiceImplTest {
         when(txCommunicationService.ejecutarTransaccion(anyString(), anyString(), anyString(), any(), anyString()))
                 .thenThrow(new GestoPagoTimeoutException("Read timed out", null));
 
-        BusinessConflictException ex = assertThrows(BusinessConflictException.class, () ->
+        GestoPagoTimeoutException ex = assertThrows(GestoPagoTimeoutException.class, () ->
                 pagoService.procesarPago(request, correo));
 
-        assertEquals("TIMEOUT_PROVEEDOR", ex.getCodigo());
+        assertTrue(ex.getMessage().contains("no respondió a tiempo"));
 
         // VERIFICACIÓN: NO se debe abonar a ciegas para evitar saldo doble
         verify(cuentaRepository, never()).abonarSaldo(any(), any());
@@ -449,5 +453,118 @@ class PagoServicioServiceImplTest {
         assertEquals("sendTx_duplicated", ex.getCodigo());
         assertTrue(ex.getMessage().contains("transacción duplicada"));
         verify(cuentaRepository).abonarSaldo(cuentaMock.getIdBancaria(), new BigDecimal("100.00"));
+    }
+
+    @Test
+    @DisplayName("Validación cruzada: debe rechazar si el idServicio enviado no corresponde al idProducto del catálogo")
+    void testProcesarPago_ServicioNoCoincideConProducto() {
+        PagoServicioRequest request = new PagoServicioRequest(
+                numCuenta, "Password123", "999", "11", "CFE123456789", new BigDecimal("100.00")
+        );
+
+        when(usuarioRepository.findByCorreoIgnoreCase(correo)).thenReturn(Optional.of(usuarioMock));
+        when(passwordEncoder.matches("Password123", usuarioMock.getPassword())).thenReturn(true);
+        when(cuentaRepository.findByNumeroCuenta(numCuenta)).thenReturn(Optional.of(cuentaMock));
+        when(productoRepository.findByIdProducto(11)).thenReturn(Optional.of(productoServicioMock));
+
+        BusinessConflictException ex = assertThrows(BusinessConflictException.class, () ->
+                pagoService.procesarPago(request, correo));
+
+        assertEquals("SERVICIO_NO_COINCIDE", ex.getCodigo());
+        assertTrue(ex.getMessage().contains("no pertenece a la compañía o servicio indicado"));
+        verify(cuentaRepository, never()).debitarSaldo(any(), any());
+    }
+
+    @Test
+    @DisplayName("Conciliación explícita EXITOSA: confirma pago en PENDIENTE_CONCILIACION sin mover saldo")
+    void testConciliarPago_ExplicitoExitoso() {
+        PagoServicioEntity pagoPendiente = new PagoServicioEntity();
+        pagoPendiente.setIdPago(UUID.randomUUID());
+        pagoPendiente.setCuenta(cuentaMock);
+        pagoPendiente.setIdServicio("1");
+        pagoPendiente.setIdProducto("11");
+        pagoPendiente.setNombreServicio("CFE");
+        pagoPendiente.setNombreProducto("CFE Suministrador");
+        pagoPendiente.setReferencia("CFE123456789");
+        pagoPendiente.setMonto(new BigDecimal("100.00"));
+        pagoPendiente.setUpc("UPC-CONC-01");
+        pagoPendiente.setEstado(EstadoPagoServicio.PENDIENTE_CONCILIACION);
+
+        when(pagoRepository.findByUpc("UPC-CONC-01")).thenReturn(Optional.of(pagoPendiente));
+        when(pagoRepository.save(any(PagoServicioEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(cuentaRepository.findById(cuentaMock.getIdBancaria())).thenReturn(Optional.of(cuentaMock));
+
+        PagoConciliacionRequest request = new PagoConciliacionRequest(
+                "UPC-CONC-01", true, "GP-777", "AUTH-777", "Confirmado en portal GestoPago"
+        );
+
+        PagoServicioResponse response = pagoService.conciliarPago(request, correo, false);
+
+        assertEquals(EstadoPagoServicio.EXITOSO, response.estado());
+        assertEquals("GP-777", response.folioTransaccionGp());
+        assertEquals("AUTH-777", response.folioAutorizacion());
+        verify(cuentaRepository, never()).abonarSaldo(any(), any());
+    }
+
+    @Test
+    @DisplayName("Conciliación explícita REVERTIDA: reintegra el saldo atómicamente y cambia estado a REVERTIDO")
+    void testConciliarPago_ExplicitoRevertido() {
+        PagoServicioEntity pagoPendiente = new PagoServicioEntity();
+        pagoPendiente.setIdPago(UUID.randomUUID());
+        pagoPendiente.setCuenta(cuentaMock);
+        pagoPendiente.setIdServicio("1");
+        pagoPendiente.setIdProducto("11");
+        pagoPendiente.setNombreServicio("CFE");
+        pagoPendiente.setNombreProducto("CFE Suministrador");
+        pagoPendiente.setReferencia("CFE123456789");
+        pagoPendiente.setMonto(new BigDecimal("100.00"));
+        pagoPendiente.setUpc("UPC-CONC-02");
+        pagoPendiente.setEstado(EstadoPagoServicio.PENDIENTE_CONCILIACION);
+
+        when(pagoRepository.findByUpc("UPC-CONC-02")).thenReturn(Optional.of(pagoPendiente));
+        when(pagoRepository.save(any(PagoServicioEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(cuentaRepository.findById(cuentaMock.getIdBancaria())).thenReturn(Optional.of(cuentaMock));
+
+        PagoConciliacionRequest request = new PagoConciliacionRequest(
+                "UPC-CONC-02", false, null, null, "No procesada en GestoPago"
+        );
+
+        PagoServicioResponse response = pagoService.conciliarPago(request, correo, false);
+
+        assertEquals(EstadoPagoServicio.REVERTIDO, response.estado());
+        verify(cuentaRepository).abonarSaldo(cuentaMock.getIdBancaria(), new BigDecimal("100.00"));
+    }
+
+    @Test
+    @DisplayName("Conciliación automática idempotente: si el proveedor indica sendTx_duplicated (03), confirma EXITOSO sin reembolso")
+    void testConciliarPago_IdempotenciaAutomaticaConfirmaExitoso() {
+        PagoServicioEntity pagoPendiente = new PagoServicioEntity();
+        pagoPendiente.setIdPago(UUID.randomUUID());
+        pagoPendiente.setCuenta(cuentaMock);
+        pagoPendiente.setIdServicio("1");
+        pagoPendiente.setIdProducto("11");
+        pagoPendiente.setNombreServicio("CFE");
+        pagoPendiente.setNombreProducto("CFE Suministrador");
+        pagoPendiente.setReferencia("CFE123456789");
+        pagoPendiente.setMonto(new BigDecimal("100.00"));
+        pagoPendiente.setUpc("UPC-CONC-03");
+        pagoPendiente.setEstado(EstadoPagoServicio.PENDIENTE_CONCILIACION);
+
+        when(pagoRepository.findByUpc("UPC-CONC-03")).thenReturn(Optional.of(pagoPendiente));
+        when(pagoRepository.save(any(PagoServicioEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(cuentaRepository.findById(cuentaMock.getIdBancaria())).thenReturn(Optional.of(cuentaMock));
+
+        GestoPagoTxResponse gpDuplicado = new GestoPagoTxResponse();
+        gpDuplicado.setCodigo("03");
+        gpDuplicado.setTexto("sendTx_duplicated: UPC ya procesado");
+        when(txCommunicationService.ejecutarTransaccion("1", "11", "CFE123456789", new BigDecimal("100.00"), "UPC-CONC-03"))
+                .thenReturn(gpDuplicado);
+
+        PagoConciliacionRequest request = new PagoConciliacionRequest("UPC-CONC-03", null, null, null, null);
+
+        PagoServicioResponse response = pagoService.conciliarPago(request, correo, false);
+
+        assertEquals(EstadoPagoServicio.EXITOSO, response.estado());
+        verify(cuentaRepository, never()).abonarSaldo(any(), any());
     }
 }
