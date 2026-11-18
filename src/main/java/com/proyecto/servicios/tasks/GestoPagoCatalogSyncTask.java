@@ -24,7 +24,11 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -65,6 +69,9 @@ public class GestoPagoCatalogSyncTask {
             if (totalPostgres == 0) {
                 log.info("Catálogo en PostgreSQL vacío al iniciar (0 productos). Disparando sincronización inmediata...");
                 syncCatalog();
+                if (postgresRepository.count() == 0) {
+                    cargarCatalogoDesdeRespaldoLocal();
+                }
             } else {
                 log.info("Catálogo en PostgreSQL listo con {} productos.", totalPostgres);
             }
@@ -80,31 +87,7 @@ public class GestoPagoCatalogSyncTask {
         log.info("Iniciando sincronización del catálogo de GestoPago...");
         try {
             String xmlResponse = obtenerXmlCatalogo();
-
-            JAXBContext jaxbContext = JAXBContext.newInstance(GestoPagoProductResponse.class);
-            Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-            GestoPagoProductResponse response = (GestoPagoProductResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
-
-            if (response == null || response.getProductos() == null || response.getProductos().isEmpty()) {
-                throw new RuntimeException("El catálogo devuelto está vacío o hubo un error en la respuesta XML. No se sobrescribirá la base de datos.");
-            }
-
-            List<GestoPagoProducto> productosNuevosCrudos = response.getProductos();
-
-            // 3.1 Validación de Integridad (Filtrar corruptos)
-            List<GestoPagoProducto> nuevosProductosSanos = productosNuevosCrudos.stream()
-                    .filter(p -> {
-                        if (p.getIdProducto() == null) {
-                            log.warn("Producto ignorado: Falta ID");
-                            return false;
-                        }
-                        if (p.getPrecio() == null || p.getPrecio() < 0) {
-                            log.warn("Producto ignorado: Precio inválido para ID {}", p.getIdProducto());
-                            return false;
-                        }
-                        return true;
-                    })
-                    .collect(Collectors.toList());
+            List<GestoPagoProducto> nuevosProductosSanos = parsearYFiltrarProductos(xmlResponse);
 
             // 3.2 Filtro de Anomalías (Sanity Check basado en PostgreSQL / MongoDB)
             long totalActual = obtenerConteoActualSeguro();
@@ -115,8 +98,7 @@ public class GestoPagoCatalogSyncTask {
                                 nuevosProductosSanos.size(), totalActual));
             }
 
-            log.info("Se procesarán {} productos sanos de {} descargados. Actualizando BD...",
-                    nuevosProductosSanos.size(), productosNuevosCrudos.size());
+            log.info("Se procesarán {} productos sanos. Actualizando BD...", nuevosProductosSanos.size());
 
             procesarYGuardar(nuevosProductosSanos);
 
@@ -127,6 +109,48 @@ public class GestoPagoCatalogSyncTask {
         } catch (Exception e) {
             log.error("Falló la sincronización del catálogo GestoPago ({})", e.getClass().getSimpleName());
         }
+    }
+
+    private void cargarCatalogoDesdeRespaldoLocal() {
+        try {
+            Path backupPath = Path.of("productos.xml");
+            if (!Files.exists(backupPath)) {
+                log.warn("No se encontró el archivo de respaldo local productos.xml.");
+                return;
+            }
+            log.info("Cargando catálogo inicial de respaldo desde productos.xml...");
+            String xmlResponse = Files.readString(backupPath, StandardCharsets.UTF_8);
+            List<GestoPagoProducto> nuevosProductosSanos = parsearYFiltrarProductos(xmlResponse);
+            procesarYGuardar(nuevosProductosSanos);
+            log.info("Catálogo inicial cargado desde respaldo local con {} productos.", nuevosProductosSanos.size());
+        } catch (Exception e) {
+            log.error("Falló la carga inicial desde respaldo local ({})", e.getClass().getSimpleName());
+        }
+    }
+
+    private List<GestoPagoProducto> parsearYFiltrarProductos(String xmlResponse) throws Exception {
+        JAXBContext jaxbContext = JAXBContext.newInstance(GestoPagoProductResponse.class);
+        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+        GestoPagoProductResponse response = (GestoPagoProductResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
+
+        if (response == null || response.getProductos() == null || response.getProductos().isEmpty()) {
+            throw new RuntimeException("El catálogo devuelto está vacío o hubo un error en la respuesta XML. No se sobrescribirá la base de datos.");
+        }
+
+        // 3.1 Validación de Integridad (Filtrar corruptos)
+        return response.getProductos().stream()
+                .filter(p -> {
+                    if (p.getIdProducto() == null) {
+                        log.warn("Producto ignorado: Falta ID");
+                        return false;
+                    }
+                    if (p.getPrecio() == null || p.getPrecio() < 0) {
+                        log.warn("Producto ignorado: Precio inválido para ID {}", p.getIdProducto());
+                        return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
     }
 
     private String obtenerXmlCatalogo() throws Exception {
@@ -164,17 +188,29 @@ public class GestoPagoCatalogSyncTask {
                 .map(GestoPagoProducto::getIdProducto)
                 .collect(Collectors.toSet());
 
-        // 1. Manejar PostgreSQL (Fuente transaccional primaria para pagos)
+        sincronizarPostgres(nuevosProductos, nuevosIds);
+        sincronizarMongo(nuevosProductos, nuevosIds);
+    }
+
+    private void sincronizarPostgres(List<GestoPagoProducto> nuevosProductos, Set<Integer> nuevosIds) {
+        // Fuente transaccional primaria: indexamos en memoria para guardar en un único lote (saveAll)
         List<ProductoEntity> allPostgres = postgresRepository.findAll();
+        Map<Integer, ProductoEntity> pgPorId = new HashMap<>(allPostgres.size());
+        Map<Integer, ProductoEntity> entidadesPorGuardar = new LinkedHashMap<>();
+
         for (ProductoEntity entity : allPostgres) {
+            if (entity.getIdProducto() == null) {
+                continue;
+            }
+            pgPorId.put(entity.getIdProducto(), entity);
             if (!nuevosIds.contains(entity.getIdProducto())) {
                 entity.setActivo(false);
-                postgresRepository.save(entity);
+                entidadesPorGuardar.put(entity.getIdProducto(), entity);
             }
         }
 
         for (GestoPagoProducto dto : nuevosProductos) {
-            ProductoEntity pgEntity = postgresRepository.findByIdProducto(dto.getIdProducto()).orElse(new ProductoEntity());
+            ProductoEntity pgEntity = pgPorId.computeIfAbsent(dto.getIdProducto(), k -> new ProductoEntity());
             pgEntity.setIdProducto(dto.getIdProducto());
             pgEntity.setIdServicio(dto.getIdServicio());
             pgEntity.setServicio(dto.getServicio());
@@ -185,21 +221,34 @@ public class GestoPagoCatalogSyncTask {
             pgEntity.setHasDigitoVerificador(dto.getHasDigitoVerificador() != null && dto.getHasDigitoVerificador());
             pgEntity.setLegend(dto.getLegend());
             pgEntity.setActivo(true);
-            postgresRepository.save(pgEntity);
+            entidadesPorGuardar.put(dto.getIdProducto(), pgEntity);
         }
 
-        // 2. Manejar MongoDB de forma aislada (si Mongo no está disponible, no interrumpe PostgreSQL)
+        if (!entidadesPorGuardar.isEmpty()) {
+            postgresRepository.saveAll(new ArrayList<>(entidadesPorGuardar.values()));
+        }
+    }
+
+    private void sincronizarMongo(List<GestoPagoProducto> nuevosProductos, Set<Integer> nuevosIds) {
+        // Manejar MongoDB de forma aislada (si Mongo no está disponible, no interrumpe PostgreSQL)
         try {
             List<ProductoDocument> allMongo = mongoRepository.findAll();
+            Map<Integer, ProductoDocument> mongoPorId = new HashMap<>(allMongo.size());
+            Map<Integer, ProductoDocument> documentosPorGuardar = new LinkedHashMap<>();
+
             for (ProductoDocument doc : allMongo) {
+                if (doc.getIdProducto() == null) {
+                    continue;
+                }
+                mongoPorId.put(doc.getIdProducto(), doc);
                 if (!nuevosIds.contains(doc.getIdProducto())) {
                     doc.setActivo(false);
-                    mongoRepository.save(doc);
+                    documentosPorGuardar.put(doc.getIdProducto(), doc);
                 }
             }
 
             for (GestoPagoProducto dto : nuevosProductos) {
-                ProductoDocument mongoDoc = mongoRepository.findByIdProducto(dto.getIdProducto()).orElse(new ProductoDocument());
+                ProductoDocument mongoDoc = mongoPorId.computeIfAbsent(dto.getIdProducto(), k -> new ProductoDocument());
                 mongoDoc.setIdProducto(dto.getIdProducto());
                 mongoDoc.setIdServicio(dto.getIdServicio());
                 mongoDoc.setServicio(dto.getServicio());
@@ -210,7 +259,11 @@ public class GestoPagoCatalogSyncTask {
                 mongoDoc.setHasDigitoVerificador(dto.getHasDigitoVerificador() != null && dto.getHasDigitoVerificador());
                 mongoDoc.setLegend(dto.getLegend());
                 mongoDoc.setActivo(true);
-                mongoRepository.save(mongoDoc);
+                documentosPorGuardar.put(dto.getIdProducto(), mongoDoc);
+            }
+
+            if (!documentosPorGuardar.isEmpty()) {
+                mongoRepository.saveAll(new ArrayList<>(documentosPorGuardar.values()));
             }
         } catch (Exception mongoEx) {
             log.warn("Catálogo sincronizado en PostgreSQL; MongoDB no estuvo disponible en este ciclo ({}).",

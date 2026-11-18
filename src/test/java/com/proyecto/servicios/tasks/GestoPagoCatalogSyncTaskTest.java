@@ -15,8 +15,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Collection;
 import java.util.Collections;
-import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -59,8 +59,19 @@ class GestoPagoCatalogSyncTaskTest {
         return sb.toString();
     }
 
+    private static int contarElementos(Iterable<?> iterable) {
+        if (iterable instanceof Collection<?> collection) {
+            return collection.size();
+        }
+        int total = 0;
+        for (Object ignored : iterable) {
+            total++;
+        }
+        return total;
+    }
+
     @Test
-    @DisplayName("Debe sincronizar productos correctamente cuando la API responde con datos válidos")
+    @DisplayName("Debe sincronizar productos correctamente en lote cuando la API responde con datos válidos")
     void syncCatalog_exitoso() {
         // Arrange
         when(tokenService.obtenerBearerToken(anyInt(), any())).thenReturn("valid-token");
@@ -69,15 +80,15 @@ class GestoPagoCatalogSyncTaskTest {
         when(mongoRepository.count()).thenReturn(0L);
         when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
         when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
-        when(postgresRepository.findByIdProducto(any())).thenReturn(Optional.empty());
-        when(mongoRepository.findByIdProducto(any())).thenReturn(Optional.empty());
 
         // Act
         syncTask.syncCatalog();
 
-        // Assert - Se deben guardar 3 productos en cada BD
-        verify(postgresRepository, times(3)).save(any(ProductoEntity.class));
-        verify(mongoRepository, times(3)).save(any(ProductoDocument.class));
+        // Assert - Se deben guardar 3 productos en lote en cada BD sin consultas 1x1
+        verify(postgresRepository, times(1)).saveAll(argThat(items -> contarElementos(items) == 3));
+        verify(mongoRepository, times(1)).saveAll(argThat(items -> contarElementos(items) == 3));
+        verify(postgresRepository, never()).findByIdProducto(any());
+        verify(mongoRepository, never()).findByIdProducto(any());
     }
 
     @Test
@@ -93,8 +104,8 @@ class GestoPagoCatalogSyncTaskTest {
         syncTask.syncCatalog();
 
         // Assert - No se debe guardar nada
-        verify(postgresRepository, never()).save(any(ProductoEntity.class));
-        verify(mongoRepository, never()).save(any(ProductoDocument.class));
+        verify(postgresRepository, never()).saveAll(any());
+        verify(mongoRepository, never()).saveAll(any());
     }
 
     @Test
@@ -111,8 +122,8 @@ class GestoPagoCatalogSyncTaskTest {
         syncTask.syncCatalog();
 
         // Assert - No se debe actualizar la base de datos
-        verify(postgresRepository, never()).save(any(ProductoEntity.class));
-        verify(mongoRepository, never()).save(any(ProductoDocument.class));
+        verify(postgresRepository, never()).saveAll(any());
+        verify(mongoRepository, never()).saveAll(any());
     }
 
     @Test
@@ -125,7 +136,7 @@ class GestoPagoCatalogSyncTaskTest {
         syncTask.syncCatalog();
 
         // Assert - No se debe guardar nada
-        verify(postgresRepository, never()).save(any(ProductoEntity.class));
+        verify(postgresRepository, never()).saveAll(any());
     }
 
     @Test
@@ -140,6 +151,26 @@ class GestoPagoCatalogSyncTaskTest {
         syncTask.syncCatalog();
 
         // Assert
-        verify(postgresRepository, never()).save(any(ProductoEntity.class));
+        verify(postgresRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("Debe cargar respaldo local productos.xml al iniciar si la API devuelve XML vacío y la BD está en cero")
+    void verificarCatalogoInicial_cuandoApiDevuelveVacioYCeroEnBd_cargaRespaldoLocal() {
+        // Arrange
+        when(postgresRepository.count()).thenReturn(0L);
+        when(tokenService.obtenerBearerToken(anyInt(), any())).thenReturn("expired-token");
+        String xmlTokenExpirado = "<?xml version='1.0' encoding='UTF-8'?><RESPONSE>" +
+                "<MENSAJE><CODIGO>00</CODIGO><TEXTO>Token expirado</TEXTO></MENSAJE></RESPONSE>";
+        when(productClient.getProductList(any())).thenReturn(xmlTokenExpirado);
+        when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
+        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
+
+        // Act
+        syncTask.verificarCatalogoInicial();
+
+        // Assert - Carga los productos de productos.xml en lote
+        verify(postgresRepository, times(1)).saveAll(argThat(items -> contarElementos(items) > 100));
+        verify(mongoRepository, times(1)).saveAll(argThat(items -> contarElementos(items) > 100));
     }
 }
