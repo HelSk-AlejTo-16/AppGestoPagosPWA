@@ -155,10 +155,10 @@ class GestoPagoCatalogSyncTaskTest {
     }
 
     @Test
-    @DisplayName("Debe cargar respaldo local productos.xml al iniciar si la API devuelve XML vacío y la BD está en cero")
+    @DisplayName("Debe cargar respaldo local productos.xml al iniciar si la API devuelve XML vacío y la BD solo tiene los 7 productos semilla")
     void verificarCatalogoInicial_cuandoApiDevuelveVacioYCeroEnBd_cargaRespaldoLocal() {
         // Arrange
-        when(postgresRepository.count()).thenReturn(0L);
+        when(postgresRepository.count()).thenReturn(7L);
         when(tokenService.obtenerBearerToken(anyInt(), any())).thenReturn("expired-token");
         String xmlTokenExpirado = "<?xml version='1.0' encoding='UTF-8'?><RESPONSE>" +
                 "<MENSAJE><CODIGO>00</CODIGO><TEXTO>Token expirado</TEXTO></MENSAJE></RESPONSE>";

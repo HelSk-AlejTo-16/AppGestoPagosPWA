@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(prefix = "gestopago.sync", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class GestoPagoCatalogSyncTask {
 
+    private static final long MIN_PRODUCTOS_CATALOGO_COMPLETO = 50L;
+
     private final GestoPagoProductClient productClient;
     private final GestoPagoTokenService tokenService;
     private final ProductoMongoRepository mongoRepository;
@@ -66,10 +68,10 @@ public class GestoPagoCatalogSyncTask {
     public void verificarCatalogoInicial() {
         try {
             long totalPostgres = postgresRepository.count();
-            if (totalPostgres == 0) {
-                log.info("Catálogo en PostgreSQL vacío al iniciar (0 productos). Disparando sincronización inmediata...");
+            if (totalPostgres < MIN_PRODUCTOS_CATALOGO_COMPLETO) {
+                log.info("Catálogo en PostgreSQL incompleto al iniciar ({} productos). Disparando sincronización inmediata...", totalPostgres);
                 syncCatalog();
-                if (postgresRepository.count() == 0) {
+                if (postgresRepository.count() < MIN_PRODUCTOS_CATALOGO_COMPLETO) {
                     cargarCatalogoDesdeRespaldoLocal();
                 }
             } else {
@@ -160,7 +162,7 @@ public class GestoPagoCatalogSyncTask {
             return productClient.getProductList(bearerToken);
         } catch (Exception apiEx) {
             log.warn("La llamada directa a getProductList de GestoPago no estuvo disponible ({}).", apiEx.getClass().getSimpleName());
-            if (postgresRepository.count() == 0) {
+            if (postgresRepository.count() < MIN_PRODUCTOS_CATALOGO_COMPLETO) {
                 Path backupPath = Path.of("productos.xml");
                 if (Files.exists(backupPath)) {
                     log.info("Cargando catálogo inicial de respaldo desde productos.xml para evitar base de datos vacía...");
