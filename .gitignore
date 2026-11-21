@@ -49,4 +49,4 @@ replay_pid*.log
 # Secretos y variables de entorno locales (NUNCA versionar)
 .env
 .env.*
-!.env.example
+.env.example

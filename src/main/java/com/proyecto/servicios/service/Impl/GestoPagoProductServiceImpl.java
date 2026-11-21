@@ -76,22 +76,22 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
     }
 
     // ============================
-    // Cadena de respaldo: MongoDB, PostgreSQL y API directa
+    // Cadena de respaldo: PostgreSQL, MongoDB y API directa
     // ============================
 
     private GestoPagoProductResponse consultarCatalogo() {
         try {
-            return desdeMongo();
-        } catch (Exception eMongo) {
-            notificationService.alertFallbackTriggered("PostgreSQL",
-                    "Fallo al obtener datos de MongoDB: " + eMongo.getMessage());
+            return desdePostgres();
+        } catch (Exception ePg) {
+            notificationService.alertFallbackTriggered("MongoDB",
+                    "Fallo al obtener datos de PostgreSQL: " + ePg.getMessage());
         }
 
         try {
-            return desdePostgres();
-        } catch (Exception ePg) {
+            return desdeMongo();
+        } catch (Exception eMongo) {
             notificationService.alertFallbackTriggered("API Directa GestoPago",
-                    "Fallo de base de datos Postgres: " + ePg.getMessage());
+                    "Fallo de base de datos MongoDB: " + eMongo.getMessage());
         }
 
         return desdeApiExterna();
@@ -102,12 +102,12 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         if (docs.isEmpty()) {
             throw new IllegalStateException("MongoDB vacío");
         }
-        log.info("Catálogo obtenido exitosamente desde MongoDB");
+        log.info("Catálogo obtenido exitosamente desde MongoDB (Respaldo)");
         List<GestoPagoProducto> productos = docs.stream()
                 .filter(d -> Boolean.TRUE.equals(d.getActivo()))
                 .map(this::mapMongoToDto)
                 .toList();
-        return armarRespuesta("Catálogo obtenido de MongoDB local", productos);
+        return armarRespuesta("Catálogo obtenido de MongoDB (Respaldo)", productos);
     }
 
     private GestoPagoProductResponse desdePostgres() {
@@ -115,12 +115,12 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         if (entidades.isEmpty()) {
             throw new IllegalStateException("PostgreSQL vacío");
         }
-        log.info("Catálogo obtenido exitosamente desde PostgreSQL (Respaldo)");
+        log.info("Catálogo obtenido exitosamente desde PostgreSQL");
         List<GestoPagoProducto> productos = entidades.stream()
                 .filter(e -> Boolean.TRUE.equals(e.getActivo()))
                 .map(this::mapPostgresToDto)
                 .toList();
-        return armarRespuesta("Catálogo obtenido de PostgreSQL (Respaldo)", productos);
+        return armarRespuesta("Catálogo obtenido de PostgreSQL local", productos);
     }
 
     private GestoPagoProductResponse desdeApiExterna() {

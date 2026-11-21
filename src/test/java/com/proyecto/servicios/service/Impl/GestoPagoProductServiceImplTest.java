@@ -1,7 +1,6 @@
 package com.proyecto.servicios.service.Impl;
 
 import com.proyecto.servicios.client.GestoPagoProductClient;
-import com.proyecto.servicios.entity.gestopago.GestoPagoToken;
 import com.proyecto.servicios.entity.gestopago.ProductoDocument;
 import com.proyecto.servicios.entity.gestopago.ProductoEntity;
 import com.proyecto.servicios.exception.CatalogUnavailableException;
@@ -10,7 +9,6 @@ import com.proyecto.servicios.repositorys.gestopago.ProductoMongoRepository;
 import com.proyecto.servicios.repositorys.gestopago.ProductoPostgresRepository;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import com.proyecto.servicios.service.NotificationService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,10 +18,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -72,17 +72,45 @@ class GestoPagoProductServiceImplTest {
     }
 
     // ============================
-    // Escenario 1: MongoDB responde
+    // Escenario 1: PostgreSQL responde (fuente primaria)
     // ============================
 
     @Test
-    @DisplayName("Debe retornar productos desde MongoDB cuando hay datos disponibles")
-    void obtenerProductos_desdeMongoExitoso() {
+    @DisplayName("Debe retornar productos desde PostgreSQL como fuente primaria cuando hay datos disponibles")
+    void obtenerProductos_desdePostgresExitoso() {
         // Arrange
+        List<ProductoEntity> pgEntities = List.of(
+                crearEntidadPostgres(1, "Producto A", 100.0, true),
+                crearEntidadPostgres(2, "Producto B", 200.0, true),
+                crearEntidadPostgres(3, "Producto Inactivo", 50.0, false)
+        );
+        when(postgresRepository.findAll()).thenReturn(pgEntities);
+
+        // Act
+        GestoPagoProductResponse response = productService.obtenerProductos();
+
+        // Assert
+        assertNotNull(response);
+        assertEquals("00", response.getMensaje().getCodigo());
+        assertEquals("Catálogo obtenido de PostgreSQL local", response.getMensaje().getTexto());
+        assertEquals(2, response.getProductos().size());
+        verify(mongoRepository, never()).findAll();
+        verify(productClient, never()).getProductList(anyString());
+        verify(notificationService, never()).alertFallbackTriggered(anyString(), anyString());
+    }
+
+    // ============================
+    // Escenario 2: Fallback a MongoDB (reserva)
+    // ============================
+
+    @Test
+    @DisplayName("Debe usar MongoDB como respaldo cuando PostgreSQL está vacío")
+    void obtenerProductos_fallbackMongo_postgresVacio() {
+        // Arrange - PostgreSQL vacío
+        when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
+        // MongoDB con datos
         List<ProductoDocument> mongoDocs = List.of(
-                crearDocumentoMongo(1, "Producto A", 100.0, true),
-                crearDocumentoMongo(2, "Producto B", 200.0, true),
-                crearDocumentoMongo(3, "Producto Inactivo", 50.0, false)
+                crearDocumentoMongo(1, "Producto Mongo", 150.0, true)
         );
         when(mongoRepository.findAll()).thenReturn(mongoDocs);
 
@@ -92,52 +120,21 @@ class GestoPagoProductServiceImplTest {
         // Assert
         assertNotNull(response);
         assertEquals("00", response.getMensaje().getCodigo());
-        assertEquals("Catálogo obtenido de MongoDB local", response.getMensaje().getTexto());
-        // Solo 2 productos activos (el inactivo se filtra)
-        assertEquals(2, response.getProductos().size());
-        // No se debe llamar a Postgres ni a la API
-        verify(postgresRepository, never()).findAll();
-        verify(productClient, never()).getProductList(anyString());
-        verify(notificationService, never()).alertFallbackTriggered(anyString(), anyString());
-    }
-
-    // ============================
-    // Escenario 2: Fallback a PostgreSQL
-    // ============================
-
-    @Test
-    @DisplayName("Debe usar PostgreSQL como respaldo cuando MongoDB está vacío")
-    void obtenerProductos_fallbackPostgres_mongoVacio() {
-        // Arrange - MongoDB vacío
-        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
-        // PostgreSQL con datos
-        List<ProductoEntity> pgEntities = List.of(
-                crearEntidadPostgres(1, "Producto PG", 150.0, true)
-        );
-        when(postgresRepository.findAll()).thenReturn(pgEntities);
-
-        // Act
-        GestoPagoProductResponse response = productService.obtenerProductos();
-
-        // Assert
-        assertNotNull(response);
-        assertEquals("00", response.getMensaje().getCodigo());
-        assertEquals("Catálogo obtenido de PostgreSQL (Respaldo)", response.getMensaje().getTexto());
+        assertEquals("Catálogo obtenido de MongoDB (Respaldo)", response.getMensaje().getTexto());
         assertEquals(1, response.getProductos().size());
-        // Se debe notificar el fallback
-        verify(notificationService).alertFallbackTriggered(eq("PostgreSQL"), anyString());
+        verify(notificationService).alertFallbackTriggered(eq("MongoDB"), anyString());
     }
 
     @Test
-    @DisplayName("Debe usar PostgreSQL como respaldo cuando MongoDB lanza una excepción")
-    void obtenerProductos_fallbackPostgres_mongoExcepcion() {
-        // Arrange - MongoDB explota
-        when(mongoRepository.findAll()).thenThrow(new RuntimeException("Connection refused"));
-        // PostgreSQL con datos
-        List<ProductoEntity> pgEntities = List.of(
-                crearEntidadPostgres(5, "Producto Respaldo", 300.0, true)
+    @DisplayName("Debe usar MongoDB como respaldo cuando PostgreSQL lanza una excepción")
+    void obtenerProductos_fallbackMongo_postgresExcepcion() {
+        // Arrange - PostgreSQL falla
+        when(postgresRepository.findAll()).thenThrow(new RuntimeException("Connection refused"));
+        // MongoDB con datos
+        List<ProductoDocument> mongoDocs = List.of(
+                crearDocumentoMongo(5, "Producto Respaldo", 300.0, true)
         );
-        when(postgresRepository.findAll()).thenReturn(pgEntities);
+        when(mongoRepository.findAll()).thenReturn(mongoDocs);
 
         // Act
         GestoPagoProductResponse response = productService.obtenerProductos();
@@ -147,7 +144,7 @@ class GestoPagoProductServiceImplTest {
         assertEquals("00", response.getMensaje().getCodigo());
         assertEquals(1, response.getProductos().size());
         assertEquals(300.0, response.getProductos().get(0).getPrecio());
-        verify(notificationService).alertFallbackTriggered(eq("PostgreSQL"), contains("Connection refused"));
+        verify(notificationService).alertFallbackTriggered(eq("MongoDB"), contains("Connection refused"));
     }
 
     // ============================
@@ -155,16 +152,14 @@ class GestoPagoProductServiceImplTest {
     // ============================
 
     @Test
-    @DisplayName("Debe consultar la API externa cuando MongoDB y PostgreSQL fallan")
+    @DisplayName("Debe consultar la API externa cuando PostgreSQL y MongoDB fallan")
     void obtenerProductos_fallbackApiExterna() {
         // Arrange - Todo falla localmente
-        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
         when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
+        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
 
-        // Simular token activo
         when(tokenService.obtenerBearerToken(any(), any())).thenReturn("token-fresco-123");
 
-        // Simular respuesta XML de la API
         String xmlResponse = "<?xml version='1.0' encoding='UTF-8'?>" +
                 "<RESPONSE><MENSAJE><CODIGO>01</CODIGO><TEXTO>OK</TEXTO></MENSAJE>" +
                 "<PRODUCTOS><producto servicio='TEST' producto='API Producto' idServicio='1' idProducto='99' " +
@@ -179,7 +174,6 @@ class GestoPagoProductServiceImplTest {
         assertNotNull(response);
         assertEquals(1, response.getProductos().size());
         assertTrue(response.getMensaje().getTexto().contains("API Externa Directa"));
-        // Se deben disparar las dos notificaciones de fallback
         verify(notificationService, times(2)).alertFallbackTriggered(anyString(), anyString());
     }
 
@@ -191,8 +185,8 @@ class GestoPagoProductServiceImplTest {
     @DisplayName("Debe lanzar CatalogUnavailableException cuando todas las fuentes fallan")
     void obtenerProductos_falloTotal_lanzaExcepcion() {
         // Arrange - TODO falla
-        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
         when(postgresRepository.findAll()).thenReturn(Collections.emptyList());
+        when(mongoRepository.findAll()).thenReturn(Collections.emptyList());
         when(tokenService.obtenerBearerToken(any(), any()))
                 .thenThrow(new RuntimeException("Fallo en servicio de autenticación"));
 
@@ -209,15 +203,15 @@ class GestoPagoProductServiceImplTest {
     // ============================
 
     @Test
-    @DisplayName("Debe filtrar productos inactivos y retornar solo los activos de MongoDB")
+    @DisplayName("Debe filtrar productos inactivos y retornar solo los activos de PostgreSQL")
     void obtenerProductos_filtraInactivos() {
         // Arrange - 3 productos, solo 1 activo
-        List<ProductoDocument> mongoDocs = List.of(
-                crearDocumentoMongo(1, "Activo", 100.0, true),
-                crearDocumentoMongo(2, "Inactivo 1", 200.0, false),
-                crearDocumentoMongo(3, "Inactivo 2", 300.0, false)
+        List<ProductoEntity> pgEntities = List.of(
+                crearEntidadPostgres(1, "Activo", 100.0, true),
+                crearEntidadPostgres(2, "Inactivo 1", 200.0, false),
+                crearEntidadPostgres(3, "Inactivo 2", 300.0, false)
         );
-        when(mongoRepository.findAll()).thenReturn(mongoDocs);
+        when(postgresRepository.findAll()).thenReturn(pgEntities);
 
         // Act
         GestoPagoProductResponse response = productService.obtenerProductos();

@@ -47,8 +47,8 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
             GestoPagoAuthResponse response = gestoPagoAuthClient.authenticate(
                     idDistribuidor, codigoDispositivo, password);
 
-            if (response == null || response.getToken() == null) {
-                log.error("La respuesta de GestoPago no contiene token");
+            if (response == null || response.getToken() == null || response.getToken().isBlank()) {
+                log.error("La respuesta de GestoPago no contiene token válido");
                 return;
             }
 
