@@ -9,6 +9,7 @@ import com.proyecto.servicios.model.cliente.Reenviar2faRequest;
 import com.proyecto.servicios.model.cliente.Verificar2faRequest;
 import com.proyecto.servicios.repositorys.cliente.UsuarioRepository;
 import com.proyecto.servicios.service.AuthService;
+import com.proyecto.servicios.service.EmailService;
 import com.proyecto.servicios.service.JwtService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -29,14 +30,17 @@ public class AuthServiceImpl implements AuthService {
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final EmailService emailService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthServiceImpl(UsuarioRepository usuarioRepository,
                            PasswordEncoder passwordEncoder,
-                           JwtService jwtService) {
+                           JwtService jwtService,
+                           EmailService emailService) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.emailService = emailService;
     }
 
     @Override
@@ -97,6 +101,8 @@ public class AuthServiceImpl implements AuthService {
         log.info("🔐 [2FA GENERADO] Código para {}: {} (Plataforma solicitante: {})",
                 usuario.getCorreo(), codigoOtp, plataforma);
 
+        boolean correoEnviado = emailService.enviarCodigo2fa(usuario.getCorreo(), codigoOtp, plataforma);
+
         boolean sesionActivaPrevia = usuario.getIdSesionActiva() != null
                 && usuario.getPlataformaActiva() != null
                 && !usuario.getPlataformaActiva().equalsIgnoreCase(plataforma);
@@ -108,7 +114,7 @@ public class AuthServiceImpl implements AuthService {
                 300,
                 sesionActivaPrevia,
                 usuario.getPlataformaActiva(),
-                codigoOtp
+                correoEnviado ? null : codigoOtp
         );
     }
 
@@ -188,12 +194,20 @@ public class AuthServiceImpl implements AuthService {
 
         log.info("🔐 [2FA REENVÍO] Nuevo código OTP para {}: {}", correo, nuevoOtp);
 
+        boolean correoEnviado = emailService.enviarCodigo2fa(usuario.getCorreo(), nuevoOtp, plataforma);
+
         boolean sesionActivaPrevia = usuario.getIdSesionActiva() != null
                 && usuario.getPlataformaActiva() != null
                 && !usuario.getPlataformaActiva().equalsIgnoreCase(plataforma);
 
         String nuevoTicket = jwtService.generarTicket2FA(correo, plataforma);
-        return LoginResponse.para2fa(nuevoTicket, 300, sesionActivaPrevia, usuario.getPlataformaActiva(), nuevoOtp);
+        return LoginResponse.para2fa(
+                nuevoTicket,
+                300,
+                sesionActivaPrevia,
+                usuario.getPlataformaActiva(),
+                correoEnviado ? null : nuevoOtp
+        );
     }
 
     @Override

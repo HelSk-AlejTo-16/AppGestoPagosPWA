@@ -8,6 +8,7 @@ import com.proyecto.servicios.model.cliente.LoginRequest;
 import com.proyecto.servicios.model.cliente.LoginResponse;
 import com.proyecto.servicios.model.cliente.Verificar2faRequest;
 import com.proyecto.servicios.repositorys.cliente.UsuarioRepository;
+import com.proyecto.servicios.service.EmailService;
 import com.proyecto.servicios.service.JwtService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ class AuthServiceImplTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private EmailService emailService;
+
     @InjectMocks
     private AuthServiceImpl authService;
 
@@ -59,6 +63,23 @@ class AuthServiceImplTest {
         assertEquals(6, response.codigoOtpSimulado().length());
         assertNotNull(usuario.getCodigo2fa());
         assertNotNull(usuario.getExpiracion2fa());
+    }
+
+    @Test
+    @DisplayName("Paso 1 Login: Oculta codigoOtpSimulado cuando el correo 2FA se envía exitosamente")
+    void login_ocultaCodigoSimuladoCuandoCorreoSeEnviaExitosamente() {
+        Usuario usuario = usuarioActivo();
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches("Secreta1!", "hash")).thenReturn(true);
+        when(jwtService.generarTicket2FA("cliente@example.com", "ESCRITORIO")).thenReturn("ticket-2fa-pc");
+        when(emailService.enviarCodigo2fa(eq("cliente@example.com"), anyString(), eq("ESCRITORIO")))
+                .thenReturn(true);
+
+        LoginResponse response = authService.login(new LoginRequest("cliente@example.com", "Secreta1!", "ESCRITORIO"));
+
+        assertTrue(response.requiere2fa());
+        assertNull(response.codigoOtpSimulado());
+        verify(emailService).enviarCodigo2fa(eq("cliente@example.com"), anyString(), eq("ESCRITORIO"));
     }
 
     @Test
