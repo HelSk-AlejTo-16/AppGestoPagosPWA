@@ -2,17 +2,28 @@ package com.proyecto.servicios.service;
 
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+
 @Slf4j
 @Service
 public class EmailService {
 
     private final JavaMailSender mailSender;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(8))
+            .build();
 
     @Value("${spring.mail.username:}")
     private String mailUsername;
@@ -20,33 +31,106 @@ public class EmailService {
     @Value("${spring.mail.password:}")
     private String mailPassword;
 
+    @Value("${BREVO_API_KEY:}")
+    private String brevoApiKey;
+
+    @Value("${MAIL_FROM:}")
+    private String mailFrom;
+
     public EmailService(ObjectProvider<JavaMailSender> mailSenderProvider) {
         this.mailSender = mailSenderProvider.getIfAvailable();
     }
 
     public boolean enviarCodigo2fa(String destinatario, String codigoOtp, String plataforma) {
+        String asunto = "Código de verificación 2FA: " + codigoOtp + " - Banca Digital";
+        String html = construirPlantillaHtml2fa(codigoOtp, plataforma);
+        return enviarCorreoHtml(destinatario, asunto, html, "2FA (plataforma=" + plataforma + ")");
+    }
+
+    public boolean enviarCodigoConfirmacionCuenta(String destinatario, String nombre, String codigoOtp) {
+        String asunto = "Confirma tu nueva cuenta bancaria: " + codigoOtp + " - Banca Digital";
+        String html = construirPlantillaHtmlConfirmacionCuenta(nombre, codigoOtp);
+        return enviarCorreoHtml(destinatario, asunto, html, "confirmación de cuenta");
+    }
+
+    public boolean enviarCodigoRecuperacionPassword(String destinatario, String nombre, String codigoOtp) {
+        String asunto = "Restablecer contraseña: " + codigoOtp + " - Banca Digital";
+        String html = construirPlantillaHtmlRecuperacion(nombre, codigoOtp);
+        return enviarCorreoHtml(destinatario, asunto, html, "recuperación de contraseña");
+    }
+
+    private boolean enviarCorreoHtml(String destinatario, String asunto, String contenidoHtml, String contextoLog) {
+        // Prioridad 1: API HTTP de Brevo (puerto 443 HTTPS, ideal para Render Free donde SMTP 587 está bloqueado)
+        if (brevoApiKey != null && !brevoApiKey.isBlank()) {
+            String remitente = (mailFrom != null && !mailFrom.isBlank()) ? mailFrom.trim() : mailUsername;
+            if (remitente != null && !remitente.isBlank()) {
+                if (enviarPorBrevoApi(remitente, destinatario, asunto, contenidoHtml, contextoLog)) {
+                    return true;
+                }
+            } else {
+                log.warn("BREVO_API_KEY configurada pero falta MAIL_FROM o MAIL_USERNAME como correo remitente.");
+            }
+        }
+
+        // Prioridad 2: SMTP estándar (Gmail / Brevo puerto 2525 / Mailjet)
         if (mailSender == null || mailUsername == null || mailUsername.isBlank()
                 || mailPassword == null || mailPassword.isBlank()) {
-            log.warn("Credenciales SMTP no configuradas (MAIL_USERNAME / MAIL_PASSWORD). "
-                    + "Se omite el envío real de correo 2FA para {}.", destinatario);
+            log.warn("Credenciales de correo no configuradas (BREVO_API_KEY o MAIL_USERNAME / MAIL_PASSWORD). "
+                    + "Se omite el envío real de correo de {} para {}.", contextoLog, destinatario);
             return false;
         }
 
         try {
+            String remitente = (mailFrom != null && !mailFrom.isBlank()) ? mailFrom.trim() : mailUsername;
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom(mailUsername, "Banca Digital GestoPago");
+            helper.setFrom(remitente, "Banca Digital GestoPago");
             helper.setTo(destinatario);
-            helper.setSubject("Código de verificación 2FA: " + codigoOtp + " - Banca Digital");
-            helper.setText(construirPlantillaHtml2fa(codigoOtp, plataforma), true);
+            helper.setSubject(asunto);
+            helper.setText(contenidoHtml, true);
 
             mailSender.send(message);
-            log.info("Correo 2FA enviado exitosamente a {} (plataforma={})", destinatario, plataforma);
+            log.info("Correo SMTP de {} enviado exitosamente a {}", contextoLog, destinatario);
             return true;
         } catch (Exception e) {
-            log.warn("No se pudo enviar el correo 2FA a {} ({}): {}",
-                    destinatario, e.getClass().getSimpleName(), e.getMessage());
+            log.warn("No se pudo enviar el correo SMTP de {} a {} ({}): {}",
+                    contextoLog, destinatario, e.getClass().getSimpleName(), e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean enviarPorBrevoApi(String remitente, String destinatario, String asunto,
+                                      String contenidoHtml, String contextoLog) {
+        try {
+            JSONObject payload = new JSONObject()
+                    .put("sender", new JSONObject()
+                            .put("name", "Banca Digital GestoPago")
+                            .put("email", remitente))
+                    .put("to", new JSONArray().put(new JSONObject().put("email", destinatario)))
+                    .put("subject", asunto)
+                    .put("htmlContent", contenidoHtml);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("accept", "application/json")
+                    .header("content-type", "application/json")
+                    .header("api-key", brevoApiKey.trim())
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                log.info("Correo Brevo HTTPS de {} enviado exitosamente a {}", contextoLog, destinatario);
+                return true;
+            }
+            log.warn("Brevo API respondió HTTP {} al enviar correo de {} a {}",
+                    response.statusCode(), contextoLog, destinatario);
+            return false;
+        } catch (Exception e) {
+            log.warn("Fallo al enviar correo por Brevo API de {} a {} ({}): {}",
+                    contextoLog, destinatario, e.getClass().getSimpleName(), e.getMessage());
             return false;
         }
     }
@@ -74,5 +158,55 @@ public class EmailService {
                   </div>
                 </div>
                 """.formatted(plat, codigoOtp);
+    }
+
+    private String construirPlantillaHtmlConfirmacionCuenta(String nombre, String codigoOtp) {
+        String titular = (nombre == null || nombre.isBlank()) ? "Cliente" : nombre.trim();
+        return """
+                <div style="font-family: Arial, sans-serif; background-color: #f4f7fb; padding: 24px;">
+                  <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 28px; border: 1px solid #e3e8ee;">
+                    <h2 style="color: #0a2540; margin-top: 0;">Confirma tu Cuenta Bancaria</h2>
+                    <p style="color: #425466; font-size: 14px; line-height: 1.5;">
+                      Hola <strong>%s</strong>, gracias por registrarte en <strong>Banca Digital GestoPago</strong>.
+                      Ingresa la siguiente clave en la pantalla de confirmación para activar tu cuenta:
+                    </p>
+                    <div style="margin: 22px 0; padding: 16px; background: #f0f5ff; border: 1px dashed #0066ff; border-radius: 10px; text-align: center;">
+                      <span style="display: block; font-size: 12px; color: #697386; margin-bottom: 6px;">CLAVE DE CONFIRMACIÓN</span>
+                      <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0a2540;">%s</span>
+                    </div>
+                    <p style="color: #425466; font-size: 13px; line-height: 1.5;">
+                      Esta clave es de un solo uso y tiene una vigencia de <strong>5 minutos</strong>.
+                    </p>
+                    <p style="color: #8792a2; font-size: 12px; margin-bottom: 0;">
+                      Si no creaste esta cuenta, puedes ignorar este mensaje de forma segura.
+                    </p>
+                  </div>
+                </div>
+                """.formatted(titular, codigoOtp);
+    }
+
+    private String construirPlantillaHtmlRecuperacion(String nombre, String codigoOtp) {
+        String titular = (nombre == null || nombre.isBlank()) ? "Cliente" : nombre.trim();
+        return """
+                <div style="font-family: Arial, sans-serif; background-color: #f4f7fb; padding: 24px;">
+                  <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 28px; border: 1px solid #e3e8ee;">
+                    <h2 style="color: #0a2540; margin-top: 0;">Recuperación de Contraseña</h2>
+                    <p style="color: #425466; font-size: 14px; line-height: 1.5;">
+                      Hola <strong>%s</strong>, recibimos una solicitud para restablecer la contraseña de tu cuenta en
+                      <strong>Banca Digital GestoPago</strong>.
+                    </p>
+                    <div style="margin: 22px 0; padding: 16px; background: #f0f5ff; border: 1px dashed #0066ff; border-radius: 10px; text-align: center;">
+                      <span style="display: block; font-size: 12px; color: #697386; margin-bottom: 6px;">CÓDIGO DE RECUPERACIÓN</span>
+                      <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0a2540;">%s</span>
+                    </div>
+                    <p style="color: #425466; font-size: 13px; line-height: 1.5;">
+                      Este código es de un solo uso y tiene una vigencia de <strong>5 minutos</strong>.
+                    </p>
+                    <p style="color: #8792a2; font-size: 12px; margin-bottom: 0;">
+                      Si no solicitaste el cambio de contraseña, ignora este correo y protege tu acceso.
+                    </p>
+                  </div>
+                </div>
+                """.formatted(titular, codigoOtp);
     }
 }

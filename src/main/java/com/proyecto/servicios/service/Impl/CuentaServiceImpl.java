@@ -22,15 +22,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Transactional(readOnly = true)
 public class CuentaServiceImpl implements CuentaService {
 
+    private static final long MINUTOS_VIGENCIA_IDEMPOTENCIA = 15L;
+
+    private record DepositoIdempotente(BigDecimal monto, OffsetDateTime expiraEn) {}
+
     private final CuentaBancariaRepository cuentaRepository;
+    private final Map<String, DepositoIdempotente> depositosRecientes = new ConcurrentHashMap<>();
 
     public CuentaServiceImpl(CuentaBancariaRepository cuentaRepository) {
         this.cuentaRepository = cuentaRepository;
@@ -128,7 +137,34 @@ public class CuentaServiceImpl implements CuentaService {
         validarPropiedadCuenta(cuenta, correoAutenticado, esAdmin);
         validarOperable(cuenta);
 
-        cuentaRepository.abonarSaldo(cuenta.getIdBancaria(), request.monto());
+        OffsetDateTime ahora = OffsetDateTime.now(ZoneOffset.UTC);
+        depositosRecientes.entrySet().removeIf(e -> e.getValue().expiraEn().isBefore(ahora));
+
+        String claveIdempotencia = request.claveIdempotencia() != null ? request.claveIdempotencia().trim() : "";
+        if (!claveIdempotencia.isEmpty()) {
+            String llaveCompuesta = cuenta.getNumeroCuenta() + ":" + claveIdempotencia;
+            DepositoIdempotente previo = depositosRecientes.get(llaveCompuesta);
+            if (previo != null && previo.expiraEn().isAfter(ahora)) {
+                if (previo.monto().compareTo(request.monto()) != 0) {
+                    throw new BusinessConflictException(
+                            "IDEMPOTENCIA_CONFLICTO",
+                            "La clave de operación ya fue utilizada con un monto distinto."
+                    );
+                }
+                BigDecimal saldoActual = cuentaRepository.findById(cuenta.getIdBancaria())
+                        .map(CuentaBancaria::getSaldo)
+                        .orElse(cuenta.getSaldo());
+                return new CuentaSaldoResponse(cuenta.getNumeroCuenta(), saldoActual);
+            }
+
+            cuentaRepository.abonarSaldo(cuenta.getIdBancaria(), request.monto());
+            depositosRecientes.put(
+                    llaveCompuesta,
+                    new DepositoIdempotente(request.monto(), ahora.plusMinutes(MINUTOS_VIGENCIA_IDEMPOTENCIA))
+            );
+        } else {
+            cuentaRepository.abonarSaldo(cuenta.getIdBancaria(), request.monto());
+        }
 
         BigDecimal nuevoSaldo = cuentaRepository.findById(cuenta.getIdBancaria())
                 .map(CuentaBancaria::getSaldo)

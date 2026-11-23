@@ -106,6 +106,33 @@ class CuentaServiceImplTest {
     }
 
     @Test
+    void depositar_conMismaClaveIdempotencia_noDuplicaAbono() {
+        CuentaBancaria cuenta = cuentaActiva("duenio@example.com");
+        cuenta.setIdBancaria(UUID.randomUUID());
+        when(cuentaRepository.findByNumeroCuenta("12345678901234567890")).thenReturn(Optional.of(cuenta));
+        when(cuentaRepository.abonarSaldo(eq(cuenta.getIdBancaria()), eq(new BigDecimal("500.00")))).thenReturn(1);
+
+        CuentaBancaria cuentaActualizada = cuentaActiva("duenio@example.com");
+        cuentaActualizada.setIdBancaria(cuenta.getIdBancaria());
+        cuentaActualizada.setSaldo(new BigDecimal("1500.00"));
+        when(cuentaRepository.findById(cuenta.getIdBancaria())).thenReturn(Optional.of(cuentaActualizada));
+
+        CuentaDepositoRequest request = new CuentaDepositoRequest(
+                "12345678901234567890",
+                new BigDecimal("500.00"),
+                "Depósito idempotente",
+                "idem-key-001"
+        );
+
+        CuentaSaldoResponse primera = cuentaService.depositar(request, "duenio@example.com", false);
+        CuentaSaldoResponse segunda = cuentaService.depositar(request, "duenio@example.com", false);
+
+        assertEquals(new BigDecimal("1500.00"), primera.saldo());
+        assertEquals(new BigDecimal("1500.00"), segunda.saldo());
+        verify(cuentaRepository, times(1)).abonarSaldo(eq(cuenta.getIdBancaria()), eq(new BigDecimal("500.00")));
+    }
+
+    @Test
     void depositar_conUsuarioDistinto_lanzaAccessDeniedException() {
         CuentaBancaria cuenta = cuentaActiva("duenio@example.com");
         when(cuentaRepository.findByNumeroCuenta("12345678901234567890")).thenReturn(Optional.of(cuenta));

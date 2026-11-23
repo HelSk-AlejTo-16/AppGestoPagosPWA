@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -47,13 +48,17 @@ public class CuentaController {
     }
 
     /**
-     * Permite agregar fondos (depósito) a una cuenta bancaria activa.
+     * Permite agregar fondos (depósito) a una cuenta bancaria activa con soporte de idempotencia.
      */
     @PostMapping("/depositar")
-    public ResponseEntity<GenericResponse> depositar(@Valid @RequestBody CuentaDepositoRequest request,
-                                                     Authentication authentication) {
+    public ResponseEntity<GenericResponse> depositar(
+            @Valid @RequestBody CuentaDepositoRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
         CuentaSaldoResponse response = cuentaService.depositar(
-                request, authentication.getName(), esAdmin(authentication));
+                request.conClaveIdempotenciaSiFalta(idempotencyKey),
+                authentication.getName(),
+                esAdmin(authentication));
         return ResponseEntity.ok(GenericResponse.ok("Depósito realizado exitosamente.", response));
     }
 

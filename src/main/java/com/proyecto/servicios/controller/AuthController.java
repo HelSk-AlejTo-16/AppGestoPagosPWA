@@ -4,6 +4,8 @@ import com.proyecto.servicios.model.GenericResponse;
 import com.proyecto.servicios.model.cliente.LoginRequest;
 import com.proyecto.servicios.model.cliente.LoginResponse;
 import com.proyecto.servicios.model.cliente.Reenviar2faRequest;
+import com.proyecto.servicios.model.cliente.RestablecerPasswordRequest;
+import com.proyecto.servicios.model.cliente.SolicitarRecuperacionRequest;
 import com.proyecto.servicios.model.cliente.Verificar2faRequest;
 import com.proyecto.servicios.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +46,24 @@ public class AuthController {
     public ResponseEntity<GenericResponse> reenviar2fa(@Valid @RequestBody Reenviar2faRequest request) {
         LoginResponse response = authService.reenviar2fa(request);
         return ResponseEntity.ok(GenericResponse.ok("Nuevo código de verificación generado exitosamente.", response));
+    }
+
+    @PostMapping("/password/solicitar-codigo")
+    @Operation(summary = "Solicitar código OTP al correo para recuperar contraseña", security = {})
+    public ResponseEntity<GenericResponse> solicitarCodigoPassword(
+            @Valid @RequestBody SolicitarRecuperacionRequest request) {
+        authService.solicitarRecuperacionPassword(request);
+        return ResponseEntity.ok(GenericResponse.ok(
+                "Hemos enviado un código de recuperación de 6 dígitos a tu correo electrónico.", null));
+    }
+
+    @PostMapping("/password/restablecer")
+    @Operation(summary = "Restablecer contraseña validando el código OTP enviado al correo", security = {})
+    public ResponseEntity<GenericResponse> restablecerPassword(
+            @Valid @RequestBody RestablecerPasswordRequest request) {
+        authService.restablecerPassword(request);
+        return ResponseEntity.ok(GenericResponse.ok(
+                "Contraseña restablecida correctamente. Ya puedes iniciar sesión.", null));
     }
 
     @PostMapping("/logout")

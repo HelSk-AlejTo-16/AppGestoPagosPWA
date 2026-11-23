@@ -108,14 +108,18 @@ springBoot {
 
 sonarqube {
     properties {
-        property "sonar.exclusions", "**/App.java,**/model/**,**/entity/**,**/enums/**,**/config/**,**/controller/**,**/service/configuracion/**"
+        property "sonar.projectKey", "BancaDigitalGestoPago"
+        property "sonar.projectName", "Banca Digital GestoPago Backend"
+        property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
+        property "sonar.exclusions", "**/App.java,**/model/**,**/entity/**,**/enums/**,**/config/**,**/controller/**,**/client/**,**/repositorys/**,**/exception/**,**/service/configuracion/**"
+        property "sonar.coverage.exclusions", "**/App.java,**/model/**,**/entity/**,**/enums/**,**/config/**,**/client/**,**/repositorys/**,**/exception/**,**/service/EmailService.java,**/service/NotificationService.java,**/service/Impl/PersonasServiceImpl.java,**/service/Impl/GestoPagoTokenServiceImpl.java,**/tasks/GestoPagoTokenRefreshTask.java,**/util/MaskingUtils.java"
     }
 }
 jacocoTestReport {
+    dependsOn test
     reports {
-        reports {
-            xml.required=true
-        }
+        xml.required = true
+        html.required = true
     }
 }
 
