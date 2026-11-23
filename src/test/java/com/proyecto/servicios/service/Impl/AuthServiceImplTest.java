@@ -4,8 +4,13 @@ import com.proyecto.servicios.entity.cliente.Cliente;
 import com.proyecto.servicios.entity.cliente.Usuario;
 import com.proyecto.servicios.exception.AccesoNoAutorizadoException;
 import com.proyecto.servicios.exception.BusinessConflictException;
+import com.proyecto.servicios.exception.ErrorValidacionException;
+import com.proyecto.servicios.exception.RecursoNoEncontradoException;
 import com.proyecto.servicios.model.cliente.LoginRequest;
 import com.proyecto.servicios.model.cliente.LoginResponse;
+import com.proyecto.servicios.model.cliente.Reenviar2faRequest;
+import com.proyecto.servicios.model.cliente.RestablecerPasswordRequest;
+import com.proyecto.servicios.model.cliente.SolicitarRecuperacionRequest;
 import com.proyecto.servicios.model.cliente.Verificar2faRequest;
 import com.proyecto.servicios.repositorys.cliente.UsuarioRepository;
 import com.proyecto.servicios.service.EmailService;
@@ -59,9 +64,9 @@ class AuthServiceImplTest {
         assertEquals("ticket-2fa-temp", response.token());
         assertEquals("2FA_TICKET", response.tipo());
         assertEquals("2FA_PENDING", response.modoAcceso());
-        assertNotNull(response.codigoOtpSimulado());
-        assertEquals(6, response.codigoOtpSimulado().length());
+        assertNull(response.codigoOtpSimulado());
         assertNotNull(usuario.getCodigo2fa());
+        assertEquals(6, usuario.getCodigo2fa().length());
         assertNotNull(usuario.getExpiracion2fa());
     }
 
@@ -199,6 +204,146 @@ class AuthServiceImplTest {
                 authService.verificar2fa(new Verificar2faRequest("ticket-2fa", "999999", false)));
 
         assertEquals("CODIGO_INVALIDO", ex.getCodigo());
+        assertEquals(1, usuario.getIntentosFallidos());
+    }
+
+    @Test
+    @DisplayName("Paso 2 Verificar 2FA: Bloquea la cuenta e invalida el OTP al tercer intento fallido")
+    void verificar2fa_bloqueaTrasTresIntentos() {
+        Usuario usuario = usuarioActivo();
+        usuario.setCodigo2fa("123456");
+        usuario.setExpiracion2fa(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
+        usuario.setIntentosFallidos(2);
+
+        when(jwtService.esToken2FA("ticket-2fa")).thenReturn(true);
+        when(jwtService.extraerCorreo("ticket-2fa")).thenReturn("cliente@example.com");
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+
+        AccesoNoAutorizadoException ex = assertThrows(AccesoNoAutorizadoException.class, () ->
+                authService.verificar2fa(new Verificar2faRequest("ticket-2fa", "000000", false)));
+
+        assertEquals("CODIGO_BLOQUEADO", ex.getCodigo());
+        assertEquals(403, ex.getStatus());
+        assertNull(usuario.getCodigo2fa());
+        assertNull(usuario.getExpiracion2fa());
+        assertNotNull(usuario.getFechaBloqueo());
+        verify(usuarioRepository).save(usuario);
+    }
+
+    @Test
+    @DisplayName("Reenviar 2FA: Genera nuevo código cuando ya pasó el enfriamiento de 30s")
+    void reenviar2fa_exitosoTrasCooldown() {
+        Usuario usuario = usuarioActivo();
+        usuario.setExpiracion2fa(OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(200));
+
+        when(jwtService.esToken2FA("ticket-2fa")).thenReturn(true);
+        when(jwtService.extraerCorreo("ticket-2fa")).thenReturn("cliente@example.com");
+        when(jwtService.extraerPlataforma("ticket-2fa")).thenReturn("MOVIL");
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+        when(jwtService.generarTicket2FA("cliente@example.com", "MOVIL")).thenReturn("nuevo-ticket-2fa");
+        when(emailService.enviarCodigo2fa(eq("cliente@example.com"), anyString(), eq("MOVIL"))).thenReturn(true);
+
+        LoginResponse response = authService.reenviar2fa(new Reenviar2faRequest("ticket-2fa"));
+
+        assertTrue(response.requiere2fa());
+        assertEquals("nuevo-ticket-2fa", response.token());
+        assertNull(response.codigoOtpSimulado());
+        assertEquals(0, usuario.getIntentosFallidos());
+        verify(usuarioRepository).save(usuario);
+    }
+
+    @Test
+    @DisplayName("Reenviar 2FA: Rechaza con HTTP 429 si no han pasado 30 segundos")
+    void reenviar2fa_rechazaDentroDeCooldown() {
+        Usuario usuario = usuarioActivo();
+        usuario.setExpiracion2fa(OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(290));
+
+        when(jwtService.esToken2FA("ticket-2fa")).thenReturn(true);
+        when(jwtService.extraerCorreo("ticket-2fa")).thenReturn("cliente@example.com");
+        when(jwtService.extraerPlataforma("ticket-2fa")).thenReturn("MOVIL");
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+
+        AccesoNoAutorizadoException ex = assertThrows(AccesoNoAutorizadoException.class, () ->
+                authService.reenviar2fa(new Reenviar2faRequest("ticket-2fa")));
+
+        assertEquals("REENVIO_DEMASIADO_PRONTO", ex.getCodigo());
+        assertEquals(429, ex.getStatus());
+    }
+
+    @Test
+    @DisplayName("Recuperación de contraseña: Envía código OTP al correo registrado")
+    void solicitarRecuperacionPassword_exitoso() {
+        Usuario usuario = usuarioActivo();
+        usuario.getCliente().setNombre("Ana");
+
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+        when(emailService.enviarCodigoRecuperacionPassword(eq("cliente@example.com"), eq("Ana"), anyString()))
+                .thenReturn(true);
+
+        authService.solicitarRecuperacionPassword(new SolicitarRecuperacionRequest("cliente@example.com"));
+
+        assertNotNull(usuario.getCodigo2fa());
+        assertEquals(6, usuario.getCodigo2fa().length());
+        assertNotNull(usuario.getExpiracion2fa());
+        verify(usuarioRepository).save(usuario);
+        verify(emailService).enviarCodigoRecuperacionPassword(eq("cliente@example.com"), eq("Ana"), anyString());
+    }
+
+    @Test
+    @DisplayName("Recuperación de contraseña: Falla con 404 si el correo no existe")
+    void solicitarRecuperacionPassword_correoInexistente() {
+        when(usuarioRepository.findByCorreoIgnoreCase("noexiste@example.com")).thenReturn(Optional.empty());
+
+        RecursoNoEncontradoException ex = assertThrows(RecursoNoEncontradoException.class, () ->
+                authService.solicitarRecuperacionPassword(new SolicitarRecuperacionRequest("noexiste@example.com")));
+
+        assertEquals("USUARIO_NO_ENCONTRADO", ex.getCodigo());
+    }
+
+    @Test
+    @DisplayName("Restablecer contraseña: Actualiza clave con código OTP válido y cierra sesión previa")
+    void restablecerPassword_exitoso() {
+        Usuario usuario = usuarioActivo();
+        usuario.setCodigo2fa("654321");
+        usuario.setExpiracion2fa(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
+        usuario.setIdSesionActiva("sesion-vieja");
+        usuario.setPlataformaActiva("WEB");
+
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.encode("NuevaClave1!")).thenReturn("nuevo-hash");
+
+        authService.restablecerPassword(new RestablecerPasswordRequest("cliente@example.com", "654321", "NuevaClave1!"));
+
+        assertEquals("nuevo-hash", usuario.getPassword());
+        assertNull(usuario.getCodigo2fa());
+        assertNull(usuario.getExpiracion2fa());
+        assertNull(usuario.getIdSesionActiva());
+        assertNull(usuario.getPlataformaActiva());
+        verify(usuarioRepository).save(usuario);
+    }
+
+    @Test
+    @DisplayName("Restablecer contraseña: Rechaza contraseñas mayores a 72 bytes para BCrypt")
+    void restablecerPassword_rechazaMayor72Bytes() {
+        String claveLarga = "A1!" + "a".repeat(75);
+        assertThrows(ErrorValidacionException.class, () ->
+                authService.restablecerPassword(new RestablecerPasswordRequest("cliente@example.com", "654321", claveLarga)));
+    }
+
+    @Test
+    @DisplayName("Restablecer contraseña: Rechaza código OTP incorrecto")
+    void restablecerPassword_codigoIncorrecto() {
+        Usuario usuario = usuarioActivo();
+        usuario.setCodigo2fa("654321");
+        usuario.setExpiracion2fa(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5));
+
+        when(usuarioRepository.findByCorreoIgnoreCase("cliente@example.com")).thenReturn(Optional.of(usuario));
+
+        AccesoNoAutorizadoException ex = assertThrows(AccesoNoAutorizadoException.class, () ->
+                authService.restablecerPassword(new RestablecerPasswordRequest("cliente@example.com", "111111", "NuevaClave1!")));
+
+        assertEquals("CODIGO_INVALIDO", ex.getCodigo());
+        assertEquals(1, usuario.getIntentosFallidos());
     }
 
     @Test

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
@@ -21,7 +22,24 @@ public record CuentaDepositoRequest(
         @Digits(integer = 10, fraction = 2, message = "El monto no puede tener más de 2 decimales.")
         BigDecimal monto,
 
-        String concepto
-) {
-}
+        String concepto,
 
+        @Size(max = 100, message = "La clave de idempotencia no puede exceder 100 caracteres.")
+        String claveIdempotencia
+) {
+    public CuentaDepositoRequest(String numeroCuenta, BigDecimal monto, String concepto) {
+        this(numeroCuenta, monto, concepto, null);
+    }
+
+    public CuentaDepositoRequest conClaveIdempotenciaSiFalta(String headerKey) {
+        if ((claveIdempotencia == null || claveIdempotencia.isBlank())
+                && headerKey != null && !headerKey.isBlank()) {
+            String recortada = headerKey.trim();
+            if (recortada.length() > 100) {
+                recortada = recortada.substring(0, 100);
+            }
+            return new CuentaDepositoRequest(numeroCuenta, monto, concepto, recortada);
+        }
+        return this;
+    }
+}

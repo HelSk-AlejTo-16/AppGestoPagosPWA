@@ -5,6 +5,8 @@ import com.proyecto.servicios.exception.GlobalExceptionHandler;
 import com.proyecto.servicios.model.cliente.LoginRequest;
 import com.proyecto.servicios.model.cliente.LoginResponse;
 import com.proyecto.servicios.model.cliente.Reenviar2faRequest;
+import com.proyecto.servicios.model.cliente.RestablecerPasswordRequest;
+import com.proyecto.servicios.model.cliente.SolicitarRecuperacionRequest;
 import com.proyecto.servicios.model.cliente.Verificar2faRequest;
 import com.proyecto.servicios.service.AuthService;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,5 +94,50 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.mensaje").value("Sesión cerrada exitosamente."));
 
         verify(authService).logout("user@banco.com");
+    }
+
+    @Test
+    @DisplayName("POST /auth/2fa/reenviar genera nuevo código 2FA")
+    void testReenviar2fa_Exitoso() throws Exception {
+        Reenviar2faRequest request = new Reenviar2faRequest("temp-ticket-jwt");
+        LoginResponse response = LoginResponse.para2fa("nuevo-ticket-jwt", 300, false, null, null);
+
+        when(authService.reenviar2fa(any(Reenviar2faRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/auth/2fa/reenviar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.codigo").value(0))
+                .andExpect(jsonPath("$.datos.token").value("nuevo-ticket-jwt"));
+    }
+
+    @Test
+    @DisplayName("POST /auth/password/solicitar-codigo envía código de recuperación")
+    void testSolicitarCodigoPassword_Exitoso() throws Exception {
+        SolicitarRecuperacionRequest request = new SolicitarRecuperacionRequest("user@banco.com");
+
+        mockMvc.perform(post("/auth/password/solicitar-codigo")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.codigo").value(0));
+
+        verify(authService).solicitarRecuperacionPassword(any(SolicitarRecuperacionRequest.class));
+    }
+
+    @Test
+    @DisplayName("POST /auth/password/restablecer restablece contraseña con OTP")
+    void testRestablecerPassword_Exitoso() throws Exception {
+        RestablecerPasswordRequest request = new RestablecerPasswordRequest(
+                "user@banco.com", "123456", "Segura123!");
+
+        mockMvc.perform(post("/auth/password/restablecer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.codigo").value(0));
+
+        verify(authService).restablecerPassword(any(RestablecerPasswordRequest.class));
     }
 }
