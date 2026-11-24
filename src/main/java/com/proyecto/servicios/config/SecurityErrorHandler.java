@@ -51,6 +51,10 @@ public class SecurityErrorHandler implements AuthenticationEntryPoint, AccessDen
         escribir(response, HttpStatus.UNAUTHORIZED, mensaje);
     }
 
+    public void escribirDemasiadasSolicitudes(HttpServletResponse response, String mensaje) throws IOException {
+        escribir(response, HttpStatus.TOO_MANY_REQUESTS, mensaje);
+    }
+
     private void escribir(HttpServletResponse response, HttpStatus status, String mensaje) throws IOException {
         GenericResponse cuerpo = new GenericResponse();
         cuerpo.setCodigo(status.value());

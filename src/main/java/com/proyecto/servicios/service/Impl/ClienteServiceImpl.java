@@ -25,6 +25,7 @@ import com.proyecto.servicios.repositorys.cliente.CuentaBancariaRepository;
 import com.proyecto.servicios.repositorys.cliente.UsuarioRepository;
 import com.proyecto.servicios.service.ClienteService;
 import com.proyecto.servicios.service.ClabeUtils;
+import com.proyecto.servicios.util.InputSanitizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -573,15 +574,17 @@ public class ClienteServiceImpl implements ClienteService {
     }
 
     private String normalizar(String value) {
-        return value == null ? null : value.trim().toUpperCase(Locale.ROOT);
+        String limpio = InputSanitizer.sanitizarTexto(value);
+        return limpio == null ? null : limpio.toUpperCase(Locale.ROOT);
     }
 
     private String normalizarCorreo(String value) {
-        return value == null ? null : value.trim().toLowerCase(Locale.ROOT);
+        String limpio = InputSanitizer.sanitizarTexto(value);
+        return limpio == null ? null : limpio.toLowerCase(Locale.ROOT);
     }
 
     private String limpiar(String value) {
-        return value == null ? null : value.trim();
+        return InputSanitizer.sanitizarTexto(value);
     }
 
     private String limpiarOpcional(String value) {

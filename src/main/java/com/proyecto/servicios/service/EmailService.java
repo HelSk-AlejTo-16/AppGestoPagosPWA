@@ -1,5 +1,6 @@
 package com.proyecto.servicios.service;
 
+import com.proyecto.servicios.util.InputSanitizer;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
@@ -60,11 +61,17 @@ public class EmailService {
     }
 
     private boolean enviarCorreoHtml(String destinatario, String asunto, String contenidoHtml, String contextoLog) {
+        String destinatarioSeguro = InputSanitizer.sanitizarTexto(destinatario);
+        String asuntoSeguro = InputSanitizer.sanitizarTexto(asunto);
+        if (destinatarioSeguro == null || destinatarioSeguro.isBlank()) {
+            return false;
+        }
+
         // Prioridad 1: API HTTP de Brevo (puerto 443 HTTPS, ideal para Render Free donde SMTP 587 está bloqueado)
         if (brevoApiKey != null && !brevoApiKey.isBlank()) {
             String remitente = (mailFrom != null && !mailFrom.isBlank()) ? mailFrom.trim() : mailUsername;
             if (remitente != null && !remitente.isBlank()) {
-                if (enviarPorBrevoApi(remitente, destinatario, asunto, contenidoHtml, contextoLog)) {
+                if (enviarPorBrevoApi(remitente, destinatarioSeguro, asuntoSeguro, contenidoHtml, contextoLog)) {
                     return true;
                 }
             } else {
@@ -76,7 +83,8 @@ public class EmailService {
         if (mailSender == null || mailUsername == null || mailUsername.isBlank()
                 || mailPassword == null || mailPassword.isBlank()) {
             log.warn("Credenciales de correo no configuradas (BREVO_API_KEY o MAIL_USERNAME / MAIL_PASSWORD). "
-                    + "Se omite el envío real de correo de {} para {}.", contextoLog, destinatario);
+                    + "Se omite el envío real de correo de {} para {}.",
+                    contextoLog, InputSanitizer.sanitizarParaLog(destinatarioSeguro));
             return false;
         }
 
@@ -86,16 +94,18 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setFrom(remitente, "Banca Digital GestoPago");
-            helper.setTo(destinatario);
-            helper.setSubject(asunto);
+            helper.setTo(destinatarioSeguro);
+            helper.setSubject(asuntoSeguro);
             helper.setText(contenidoHtml, true);
 
             mailSender.send(message);
-            log.info("Correo SMTP de {} enviado exitosamente a {}", contextoLog, destinatario);
+            log.info("Correo SMTP de {} enviado exitosamente a {}",
+                    contextoLog, InputSanitizer.sanitizarParaLog(destinatarioSeguro));
             return true;
         } catch (Exception e) {
             log.warn("No se pudo enviar el correo SMTP de {} a {} ({}): {}",
-                    contextoLog, destinatario, e.getClass().getSimpleName(), e.getMessage());
+                    contextoLog, InputSanitizer.sanitizarParaLog(destinatarioSeguro),
+                    e.getClass().getSimpleName(), e.getMessage());
             return false;
         }
     }
@@ -125,8 +135,10 @@ public class EmailService {
                 log.info("Correo Brevo HTTPS de {} enviado exitosamente a {}", contextoLog, destinatario);
                 return true;
             }
-            log.warn("Brevo API respondió HTTP {} al enviar correo de {} a {}",
-                    response.statusCode(), contextoLog, destinatario);
+            String cuerpo = response.body() == null ? "" : response.body();
+            log.warn("Brevo API respondió HTTP {} al enviar correo de {} a {}. Detalle: {}",
+                    response.statusCode(), contextoLog, destinatario,
+                    InputSanitizer.sanitizarParaLog(cuerpo));
             return false;
         } catch (Exception e) {
             log.warn("Fallo al enviar correo por Brevo API de {} a {} ({}): {}",
@@ -136,7 +148,10 @@ public class EmailService {
     }
 
     private String construirPlantillaHtml2fa(String codigoOtp, String plataforma) {
-        String plat = (plataforma == null || plataforma.isBlank()) ? "APLICACIÓN" : plataforma;
+        String plat = InputSanitizer.escaparHtml(
+                (plataforma == null || plataforma.isBlank()) ? "APLICACIÓN" : plataforma.trim()
+        );
+        String otpSeguro = InputSanitizer.escaparHtml(codigoOtp);
         return """
                 <div style="font-family: Arial, sans-serif; background-color: #f4f7fb; padding: 24px;">
                   <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 28px; border: 1px solid #e3e8ee;">
@@ -157,11 +172,14 @@ public class EmailService {
                     </p>
                   </div>
                 </div>
-                """.formatted(plat, codigoOtp);
+                """.formatted(plat, otpSeguro);
     }
 
     private String construirPlantillaHtmlConfirmacionCuenta(String nombre, String codigoOtp) {
-        String titular = (nombre == null || nombre.isBlank()) ? "Cliente" : nombre.trim();
+        String titular = InputSanitizer.escaparHtml(
+                (nombre == null || nombre.isBlank()) ? "Cliente" : nombre.trim()
+        );
+        String otpSeguro = InputSanitizer.escaparHtml(codigoOtp);
         return """
                 <div style="font-family: Arial, sans-serif; background-color: #f4f7fb; padding: 24px;">
                   <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 28px; border: 1px solid #e3e8ee;">
@@ -182,11 +200,14 @@ public class EmailService {
                     </p>
                   </div>
                 </div>
-                """.formatted(titular, codigoOtp);
+                """.formatted(titular, otpSeguro);
     }
 
     private String construirPlantillaHtmlRecuperacion(String nombre, String codigoOtp) {
-        String titular = (nombre == null || nombre.isBlank()) ? "Cliente" : nombre.trim();
+        String titular = InputSanitizer.escaparHtml(
+                (nombre == null || nombre.isBlank()) ? "Cliente" : nombre.trim()
+        );
+        String otpSeguro = InputSanitizer.escaparHtml(codigoOtp);
         return """
                 <div style="font-family: Arial, sans-serif; background-color: #f4f7fb; padding: 24px;">
                   <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 28px; border: 1px solid #e3e8ee;">
@@ -207,6 +228,6 @@ public class EmailService {
                     </p>
                   </div>
                 </div>
-                """.formatted(titular, codigoOtp);
+                """.formatted(titular, otpSeguro);
     }
 }

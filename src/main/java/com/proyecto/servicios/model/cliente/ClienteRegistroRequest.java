@@ -2,6 +2,7 @@ package com.proyecto.servicios.model.cliente;
 
 import com.proyecto.servicios.entity.cliente.EstadoCivil;
 import com.proyecto.servicios.entity.cliente.Sexo;
+import com.proyecto.servicios.util.InputSanitizer;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.AssertTrue;
@@ -60,12 +61,19 @@ public class ClienteRegistroRequest {
     private String rfc;
 
     @NotBlank(message = "La nacionalidad es obligatoria")
-    @Size(max = 50, message = "La nacionalidad no puede exceder los 50 caracteres")
+    @Size(min = 2, max = 50, message = "La nacionalidad debe tener entre 2 y 50 caracteres")
+    @Pattern(regexp = "[\\p{L}](?:[\\p{L} ]{0,48}[\\p{L}])?", message = "La nacionalidad solo debe contener letras y espacios")
+    @TextoSeguro
     private String nacionalidad = "Mexicana";
 
     @NotBlank(message = "El correo electrónico es obligatorio")
     @Email(message = "El correo electrónico no tiene un formato válido")
     @Size(max = 100, message = "El correo electrónico no puede exceder los 100 caracteres")
+    @Pattern(
+            regexp = "^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,185}\\.[A-Za-z]{2,24}$",
+            message = "El correo electrónico contiene caracteres no permitidos"
+    )
+    @TextoSeguro
     private String correo;
 
     @NotBlank(message = "La contraseña es obligatoria")
@@ -123,11 +131,15 @@ public class ClienteRegistroRequest {
         this.telefonoAlternativo = telefonoAlternativo != null ? telefonoAlternativo.trim() : null;
     }
 
+    public void setNacionalidad(String nacionalidad) {
+        this.nacionalidad = limpiarTexto(nacionalidad);
+    }
+
     private static String limpiarTexto(String valor) {
         if (valor == null) {
             return null;
         }
-        String limpio = valor.trim().replaceAll("\\s+", " ");
-        return limpio.isEmpty() ? null : limpio;
+        String limpio = InputSanitizer.sanitizarTexto(valor);
+        return (limpio == null || limpio.isEmpty()) ? null : limpio;
     }
 }
