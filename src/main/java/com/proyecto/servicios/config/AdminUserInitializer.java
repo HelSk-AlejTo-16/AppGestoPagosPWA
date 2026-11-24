@@ -81,7 +81,6 @@ public class AdminUserInitializer implements CommandLineRunner {
             InformacionLaboral laboral = new InformacionLaboral();
             laboral.setIngresoMensual(new BigDecimal("50000.00"));
             laboral.setOcupacion("Administrador de Sistemas");
-            laboral.setEmpresa("Banco Central");
             adminCliente.setInformacionLaboral(laboral);
 
             Usuario adminUsuario = new Usuario();
