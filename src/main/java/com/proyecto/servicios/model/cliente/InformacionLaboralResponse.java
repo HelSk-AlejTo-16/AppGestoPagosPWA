@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 
 public record InformacionLaboralResponse(
         BigDecimal ingresoMensual,
-        String ocupacion,
-        String empresa
+        String ocupacion
 ) {
 }

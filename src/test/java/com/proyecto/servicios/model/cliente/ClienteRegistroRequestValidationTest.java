@@ -106,12 +106,12 @@ class ClienteRegistroRequestValidationTest {
     void requestInvalido_rechazaInyeccionSqlXssOSstiEnDomicilioYDatosLaborales(String payloadMalicioso) {
         ClienteRegistroRequest request = requestValido();
         request.getDireccion().setCalle(payloadMalicioso);
-        request.getInformacionLaboral().setEmpresa(payloadMalicioso);
+        request.getInformacionLaboral().setOcupacion(payloadMalicioso);
 
         var errores = validator.validate(request);
         assertFalse(errores.isEmpty());
         assertTrue(errores.stream().anyMatch(e -> e.getPropertyPath().toString().equals("direccion.calle")));
-        assertTrue(errores.stream().anyMatch(e -> e.getPropertyPath().toString().equals("informacionLaboral.empresa")));
+        assertTrue(errores.stream().anyMatch(e -> e.getPropertyPath().toString().equals("informacionLaboral.ocupacion")));
     }
 
     @ParameterizedTest
@@ -158,7 +158,6 @@ class ClienteRegistroRequestValidationTest {
         InformacionLaboralRequest laboral = new InformacionLaboralRequest();
         laboral.setIngresoMensual(new BigDecimal("25000.00"));
         laboral.setOcupacion("Analista");
-        laboral.setEmpresa("Empresa");
         request.setInformacionLaboral(laboral);
         return request;
     }

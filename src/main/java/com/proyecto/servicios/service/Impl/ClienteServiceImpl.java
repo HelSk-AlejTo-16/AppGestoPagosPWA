@@ -514,7 +514,6 @@ public class ClienteServiceImpl implements ClienteService {
     private void actualizarInformacionLaboral(InformacionLaboral informacion, InformacionLaboralRequest request) {
         informacion.setIngresoMensual(request.getIngresoMensual());
         informacion.setOcupacion(limpiar(request.getOcupacion()));
-        informacion.setEmpresa(limpiar(request.getEmpresa()));
     }
 
     private ClienteResponse toResponse(Cliente cliente) {
@@ -554,8 +553,7 @@ public class ClienteServiceImpl implements ClienteService {
                 ),
                 new InformacionLaboralResponse(
                         laboral.getIngresoMensual(),
-                        laboral.getOcupacion(),
-                        laboral.getEmpresa()
+                        laboral.getOcupacion()
                 ),
                 cuentas
         );

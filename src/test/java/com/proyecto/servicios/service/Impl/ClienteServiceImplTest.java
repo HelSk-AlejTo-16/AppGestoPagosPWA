@@ -307,7 +307,6 @@ class ClienteServiceImplTest {
         InformacionLaboralRequest laboral = new InformacionLaboralRequest();
         laboral.setIngresoMensual(new BigDecimal("25000.00"));
         laboral.setOcupacion("Analista");
-        laboral.setEmpresa("Empresa");
         request.setInformacionLaboral(laboral);
         return request;
     }

@@ -33,7 +33,4 @@ public class InformacionLaboral {
 
     @Column(name = "ocupacion", nullable = false, length = 100)
     private String ocupacion;
-
-    @Column(name = "empresa", nullable = false, length = 100)
-    private String empresa;
 }

@@ -30,20 +30,7 @@ public class InformacionLaboralRequest {
     @TextoSeguro
     private String ocupacion;
 
-    @NotBlank(message = "La empresa es obligatoria")
-    @Size(min = 2, max = 100, message = "La empresa debe tener entre 2 y 100 caracteres")
-    @Pattern(
-            regexp = "^[\\p{L}\\p{N} .,#°º/()&-]{2,100}$",
-            message = "La empresa contiene caracteres no permitidos"
-    )
-    @TextoSeguro
-    private String empresa;
-
     public void setOcupacion(String ocupacion) {
         this.ocupacion = InputSanitizer.sanitizarTexto(ocupacion);
-    }
-
-    public void setEmpresa(String empresa) {
-        this.empresa = InputSanitizer.sanitizarTexto(empresa);
     }
 }
