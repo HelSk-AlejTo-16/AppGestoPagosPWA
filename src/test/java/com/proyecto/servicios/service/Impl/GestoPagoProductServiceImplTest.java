@@ -5,6 +5,7 @@ import com.proyecto.servicios.entity.gestopago.ProductoDocument;
 import com.proyecto.servicios.entity.gestopago.ProductoEntity;
 import com.proyecto.servicios.exception.CatalogUnavailableException;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductResponse;
+import com.proyecto.servicios.model.gestopago.ProductoBusquedaRequest;
 import com.proyecto.servicios.repositorys.gestopago.ProductoMongoRepository;
 import com.proyecto.servicios.repositorys.gestopago.ProductoPostgresRepository;
 import com.proyecto.servicios.service.GestoPagoTokenService;
@@ -219,5 +220,37 @@ class GestoPagoProductServiceImplTest {
         // Assert
         assertEquals(1, response.getProductos().size());
         assertEquals("Activo", response.getProductos().get(0).getProducto());
+    }
+
+    @Test
+    @DisplayName("Debe paginar productos y agrupar/paginar servicios correctamente")
+    void buscarProductosYServiciosPaginados_retornaSubconjuntosCorrectos() {
+        ProductoEntity p1 = crearEntidadPostgres(1, "Recarga $20", 20.0, true);
+        p1.setServicio("Telcel");
+        p1.setTipoFront(1);
+        ProductoEntity p2 = crearEntidadPostgres(2, "Recarga $50", 50.0, true);
+        p2.setServicio("Telcel");
+        p2.setTipoFront(1);
+        ProductoEntity p3 = crearEntidadPostgres(3, "Pago CFE Luz", 0.0, true);
+        p3.setIdServicio(200);
+        p3.setServicio("CFE");
+        p3.setTipoFront(2);
+
+        when(postgresRepository.findAll()).thenReturn(List.of(p1, p2, p3));
+
+        var pagProductos = productService.buscarProductosPaginados(
+                new ProductoBusquedaRequest(0, 2, null, null, null));
+        assertEquals(3, pagProductos.totalElementos());
+        assertEquals(2, pagProductos.totalPaginas());
+        assertEquals(2, pagProductos.contenido().size());
+        assertTrue(pagProductos.primera());
+        assertFalse(pagProductos.ultima());
+
+        var pagServicios = productService.buscarServiciosPaginados(
+                new ProductoBusquedaRequest(0, 1, null, null, null));
+        assertEquals(2, pagServicios.totalElementos());
+        assertEquals(2, pagServicios.totalPaginas());
+        assertEquals(1, pagServicios.contenido().size());
+        assertEquals("CFE", pagServicios.contenido().get(0).servicio());
     }
 }

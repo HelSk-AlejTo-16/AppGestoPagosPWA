@@ -9,9 +9,12 @@ import com.proyecto.servicios.exception.GestoPagoCommunicationException;
 import com.proyecto.servicios.exception.GestoPagoIntegrationException;
 import com.proyecto.servicios.exception.GestoPagoResponseException;
 import com.proyecto.servicios.exception.GestoPagoTimeoutException;
+import com.proyecto.servicios.model.cliente.PaginaResponse;
 import com.proyecto.servicios.model.gestopago.GestoPagoMensaje;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductResponse;
 import com.proyecto.servicios.model.gestopago.GestoPagoProducto;
+import com.proyecto.servicios.model.gestopago.ProductoBusquedaRequest;
+import com.proyecto.servicios.model.gestopago.ServicioResumenDto;
 import com.proyecto.servicios.repositorys.gestopago.ProductoMongoRepository;
 import com.proyecto.servicios.repositorys.gestopago.ProductoPostgresRepository;
 import com.proyecto.servicios.service.GestoPagoProductService;
@@ -28,7 +31,11 @@ import org.springframework.stereotype.Service;
 
 import java.io.StringReader;
 import java.net.SocketTimeoutException;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -73,6 +80,60 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         } finally {
             log.info("Fin de consulta del catálogo de productos ({} ms)", System.currentTimeMillis() - inicio);
         }
+    }
+
+    @Override
+    public PaginaResponse<GestoPagoProducto> buscarProductosPaginados(ProductoBusquedaRequest request) {
+        ProductoBusquedaRequest req = request != null
+                ? request
+                : new ProductoBusquedaRequest(0, 10, null, null, null);
+        List<GestoPagoProducto> filtrados = filtrarCatalogo(obtenerProductos().getProductos(), req).stream()
+                .sorted(Comparator
+                        .comparing((GestoPagoProducto p) -> textoSeguro(p.getServicio()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparingDouble(p -> p.getPrecio() != null ? p.getPrecio() : 0.0)
+                        .thenComparing(p -> textoSeguro(p.getProducto()), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        return paginarLista(filtrados, req.paginaSegura(), req.tamanoSeguro());
+    }
+
+    @Override
+    public PaginaResponse<ServicioResumenDto> buscarServiciosPaginados(ProductoBusquedaRequest request) {
+        ProductoBusquedaRequest req = request != null
+                ? request
+                : new ProductoBusquedaRequest(0, 8, null, null, null);
+        List<GestoPagoProducto> filtrados = filtrarCatalogo(obtenerProductos().getProductos(), req);
+
+        Map<String, List<GestoPagoProducto>> agrupados = new LinkedHashMap<>();
+        for (GestoPagoProducto p : filtrados) {
+            String clave = textoSeguro(p.getServicio()).toLowerCase(Locale.ROOT);
+            agrupados.computeIfAbsent(clave, k -> new java.util.ArrayList<>()).add(p);
+        }
+
+        List<ServicioResumenDto> servicios = agrupados.values().stream()
+                .map(lista -> {
+                    GestoPagoProducto base = lista.get(0);
+                    double min = lista.stream()
+                            .mapToDouble(i -> i.getPrecio() != null ? i.getPrecio() : 0.0)
+                            .min()
+                            .orElse(0.0);
+                    double max = lista.stream()
+                            .mapToDouble(i -> i.getPrecio() != null ? i.getPrecio() : 0.0)
+                            .max()
+                            .orElse(0.0);
+                    return new ServicioResumenDto(
+                            base.getIdServicio(),
+                            textoSeguro(base.getServicio()),
+                            base.getTipoFront(),
+                            clasificarCategoria(base),
+                            lista.size(),
+                            min,
+                            max
+                    );
+                })
+                .sorted(Comparator.comparing(ServicioResumenDto::servicio, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        return paginarLista(servicios, req.paginaSegura(), req.tamanoSeguro());
     }
 
     // ============================
@@ -240,5 +301,81 @@ public class GestoPagoProductServiceImpl implements GestoPagoProductService {
         p.setHasDigitoVerificador(entity.getHasDigitoVerificador());
         p.setLegend(entity.getLegend());
         return p;
+    }
+
+    private List<GestoPagoProducto> filtrarCatalogo(List<GestoPagoProducto> base, ProductoBusquedaRequest req) {
+        if (base == null || base.isEmpty()) {
+            return List.of();
+        }
+        String categoria = req.categoria() != null ? req.categoria().trim() : "";
+        String servicio = req.servicio() != null ? req.servicio().trim().toLowerCase(Locale.ROOT) : "";
+        String query = req.busqueda() != null ? req.busqueda().trim().toLowerCase(Locale.ROOT) : "";
+
+        return base.stream()
+                .filter(p -> {
+                    if (!categoria.isEmpty() && !"todos".equalsIgnoreCase(categoria)) {
+                        if (!clasificarCategoria(p).equalsIgnoreCase(categoria)) {
+                            return false;
+                        }
+                    }
+                    if (!servicio.isEmpty()) {
+                        if (!textoSeguro(p.getServicio()).toLowerCase(Locale.ROOT).equals(servicio)) {
+                            return false;
+                        }
+                    }
+                    if (!query.isEmpty()) {
+                        String nomServ = textoSeguro(p.getServicio()).toLowerCase(Locale.ROOT);
+                        String nomProd = textoSeguro(p.getProducto()).toLowerCase(Locale.ROOT);
+                        return nomServ.contains(query) || nomProd.contains(query);
+                    }
+                    return true;
+                })
+                .toList();
+    }
+
+    private static <T> PaginaResponse<T> paginarLista(List<T> items, int pagina, int tamano) {
+        int totalElementos = items.size();
+        int totalPaginas = totalElementos == 0 ? 1 : (int) Math.ceil((double) totalElementos / tamano);
+        int paginaEfectiva = Math.max(0, Math.min(pagina, totalPaginas - 1));
+        int desde = paginaEfectiva * tamano;
+        int hasta = Math.min(desde + tamano, totalElementos);
+        List<T> sublista = (desde >= totalElementos) ? List.of() : items.subList(desde, hasta);
+
+        return new PaginaResponse<>(
+                sublista,
+                paginaEfectiva,
+                tamano,
+                totalElementos,
+                totalPaginas,
+                paginaEfectiva == 0,
+                paginaEfectiva >= totalPaginas - 1
+        );
+    }
+
+    private static String clasificarCategoria(GestoPagoProducto p) {
+        if (p.getTipoFront() != null && p.getTipoFront() == 1) {
+            return "Telefonía";
+        }
+        String nombre = textoSeguro(p.getServicio()).toUpperCase(Locale.ROOT);
+        if (nombre.contains("CFE") || nombre.contains("LUZ") || nombre.contains("ELECTR")) {
+            return "Electricidad";
+        }
+        if (nombre.contains("AGUA") || nombre.contains("SIAPA") || nombre.contains("SACMEX") || nombre.contains("DAPA")) {
+            return "Agua";
+        }
+        if (nombre.contains("TELMEX") || nombre.contains("TOTALPLAY") || nombre.contains("IZZI") || nombre.contains("MEGACABLE")) {
+            return "Internet y TV";
+        }
+        if (nombre.contains("GAS") || nombre.contains("NATURGY")) {
+            return "Gas";
+        }
+        if (nombre.contains("NETFLIX") || nombre.contains("SPOTIFY") || nombre.contains("AMAZON") || nombre.contains("UBER")) {
+            return "Entretenimiento";
+        }
+        return "Servicios Públicos";
+    }
+
+    private static String textoSeguro(String valor) {
+        return valor == null ? "" : valor.trim();
     }
 }

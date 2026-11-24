@@ -25,7 +25,9 @@ import java.util.List;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   AuthRateLimitFilter authRateLimitFilter,
+                                                   JwtAuthenticationFilter jwtFilter,
                                                    SecurityErrorHandler securityErrorHandler)
             throws Exception {
         return http
@@ -35,6 +37,8 @@ public class SecurityConfig {
                 .headers(headers -> headers
                         .frameOptions(frame -> frame.deny())
                         .contentTypeOptions(Customizer.withDefaults())
+                        .contentSecurityPolicy(csp -> csp
+                                .policyDirectives("default-src 'self'; frame-ancestors 'none'; form-action 'self'"))
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
                                 .maxAgeInSeconds(31536000))
@@ -72,6 +76,7 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
 
                         .anyRequest().hasAnyAuthority("ROLE_USER", "ROLE_ADMIN"))
+                .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

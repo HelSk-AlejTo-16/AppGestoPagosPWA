@@ -16,6 +16,7 @@ import com.proyecto.servicios.repositorys.cliente.UsuarioRepository;
 import com.proyecto.servicios.service.AuthService;
 import com.proyecto.servicios.service.EmailService;
 import com.proyecto.servicios.service.JwtService;
+import com.proyecto.servicios.util.InputSanitizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,10 @@ import java.util.UUID;
 @Service
 @Transactional(readOnly = true)
 public class AuthServiceImpl implements AuthService {
+
+    // Hash BCrypt precalculado para mitigar ataques de enumeración de correos por diferencia de tiempo
+    private static final String DUMMY_BCRYPT_HASH =
+            "$2a$10$7EqJtq98hPqEX7fNZaFWoOHi6M1W8eQ0vK4b2G5pY2s9N3uZ6a8Wy";
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
@@ -57,10 +62,21 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
-        Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(request.correo().trim())
-                .orElseThrow(() -> new AccesoNoAutorizadoException(
-                        "CREDENCIALES_INVALIDAS", "Correo electrónico o contraseña incorrectos.", 401
-                ));
+        String correoLimpio = InputSanitizer.sanitizarTexto(request.correo());
+        if (correoLimpio == null || InputSanitizer.contieneCargaMaliciosa(correoLimpio)) {
+            throw new AccesoNoAutorizadoException(
+                    "CREDENCIALES_INVALIDAS", "Correo electrónico o contraseña incorrectos.", 401
+            );
+        }
+
+        Usuario usuario = usuarioRepository.findByCorreoIgnoreCase(correoLimpio).orElse(null);
+        if (usuario == null) {
+            // Igualar tiempo de cómputo BCrypt para evitar enumeración de usuarios por timing attack
+            passwordEncoder.matches(request.password(), DUMMY_BCRYPT_HASH);
+            throw new AccesoNoAutorizadoException(
+                    "CREDENCIALES_INVALIDAS", "Correo electrónico o contraseña incorrectos.", 401
+            );
+        }
 
         // Verificar si la cuenta está bloqueada temporalmente por intentos fallidos
         verificarBloqueoTemporal(usuario);
@@ -93,7 +109,8 @@ public class AuthServiceImpl implements AuthService {
         usuarioRepository.save(usuario);
 
         log.info("[2FA GENERADO] Código OTP emitido para {} (Plataforma solicitante: {})",
-                usuario.getCorreo(), plataforma);
+                InputSanitizer.sanitizarParaLog(usuario.getCorreo()),
+                InputSanitizer.sanitizarParaLog(plataforma));
 
         boolean correoEnviado = emailService.enviarCodigo2fa(usuario.getCorreo(), codigoOtp, plataforma);
         if (!correoEnviado) {
