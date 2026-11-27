@@ -13,4 +13,6 @@ public interface GestoPagoProductService {
     PaginaResponse<GestoPagoProducto> buscarProductosPaginados(ProductoBusquedaRequest request);
 
     PaginaResponse<ServicioResumenDto> buscarServiciosPaginados(ProductoBusquedaRequest request);
+
+    byte[] getServiceLogo(Integer idServicio, String nombreServicio);
 }

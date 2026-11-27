@@ -50,6 +50,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         // Endpoints públicos
                         .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/2fa/**", "/auth/password/**", "/clientes").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/catalogos/**", "/productos/getServiceLogo", "/productos/servicios/*/logo").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health").permitAll()
 
                         // Logout autenticado
@@ -64,8 +65,9 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
                         .requestMatchers("/clientes/me").hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
 
-                        // Consultas administrativas (SOLO ROLE_ADMIN)
+                        // Consultas y gestión administrativa (SOLO ROLE_ADMIN)
                         .requestMatchers(HttpMethod.POST, "/clientes/buscar").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
 
                         // Cuentas: cada usuario solo ve las suyas (se filtra en el servicio); admin ve todas
                         .requestMatchers(HttpMethod.POST, "/cuentas/buscar", "/cuentas/saldo", "/cuentas/depositar")

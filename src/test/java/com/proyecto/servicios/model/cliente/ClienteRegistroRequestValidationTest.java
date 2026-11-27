@@ -44,7 +44,7 @@ class ClienteRegistroRequestValidationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "Abc1!", "abcdef1!", "ABCDEF1!", "Abcdefgh!", "Abcdefg1", "Abcdefg1 "
+            "Abc1!", "abcdef1!", "ABCDEF1!", "Abcdefgh!", "Abcdefg1", "Abcdefg1 ", "Abcdefghijk1!"
     })
     void requestInvalido_rechazaPasswordSinRequisito(String password) {
         ClienteRegistroRequest request = requestValido();

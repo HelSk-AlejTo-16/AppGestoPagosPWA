@@ -11,7 +11,9 @@ public final class PasswordPolicy {
     }
 
     public static boolean compatibleConBcrypt(String password) {
-        return password != null && password.getBytes(StandardCharsets.UTF_8).length <= 72;
+        return password != null
+                && password.length() <= 12
+                && password.getBytes(StandardCharsets.UTF_8).length <= 72;
     }
 
     public static java.util.List<String> obtenerRequisitosFaltantes(String password) {
@@ -19,8 +21,8 @@ public final class PasswordPolicy {
         if (password == null || password.length() < 8) {
             faltantes.add("al menos 8 caracteres");
         }
-        if (password != null && password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            faltantes.add("máximo 72 caracteres");
+        if (password != null && password.length() > 12) {
+            faltantes.add("máximo 12 caracteres");
         }
         if (password == null || !password.matches(".*\\p{Lu}.*")) {
             faltantes.add("al menos una letra mayúscula");

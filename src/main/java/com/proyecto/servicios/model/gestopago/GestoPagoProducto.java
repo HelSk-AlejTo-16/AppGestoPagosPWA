@@ -44,4 +44,6 @@ public class GestoPagoProducto {
     // El legend viene como un nodo interno, por lo que usamos XmlElement
     @XmlElement(name = "legend")
     private String legend;
+
+    private String logoUrl;
 }

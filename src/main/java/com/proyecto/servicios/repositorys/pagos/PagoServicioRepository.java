@@ -38,4 +38,6 @@ public interface PagoServicioRepository extends JpaRepository<PagoServicioEntity
     Page<PagoServicioEntity> findAllByCuenta_IdBancariaOrderByCreadoEnDesc(UUID cuentaId, Pageable pageable);
 
     Page<PagoServicioEntity> findAllByEstadoOrderByCreadoEnDesc(EstadoPagoServicio estado, Pageable pageable);
+
+    long countByEstadoIn(Collection<EstadoPagoServicio> estados);
 }

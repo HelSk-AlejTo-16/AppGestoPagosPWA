@@ -15,7 +15,7 @@ class PasswordUpdateRequestValidationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "Abc1!", "abcdef1!", "ABCDEF1!", "Abcdefgh!", "Abcdefg1", "Abcdefg1 "
+            "Abc1!", "abcdef1!", "ABCDEF1!", "Abcdefgh!", "Abcdefg1", "Abcdefg1 ", "Abcdefghijk1!"
     })
     void actualizacionRechazaPasswordSinRequisito(String password) {
         PasswordUpdateRequest request = new PasswordUpdateRequest("Anterior1!", password);

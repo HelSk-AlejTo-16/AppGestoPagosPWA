@@ -3,11 +3,13 @@ package com.proyecto.servicios.service.Impl;
 import com.proyecto.servicios.client.GestoPagoProductClient;
 import com.proyecto.servicios.entity.gestopago.ProductoDocument;
 import com.proyecto.servicios.entity.gestopago.ProductoEntity;
+import com.proyecto.servicios.entity.gestopago.ServicioLogoEntity;
 import com.proyecto.servicios.exception.CatalogUnavailableException;
 import com.proyecto.servicios.model.gestopago.GestoPagoProductResponse;
 import com.proyecto.servicios.model.gestopago.ProductoBusquedaRequest;
 import com.proyecto.servicios.repositorys.gestopago.ProductoMongoRepository;
 import com.proyecto.servicios.repositorys.gestopago.ProductoPostgresRepository;
+import com.proyecto.servicios.repositorys.gestopago.ServicioLogoRepository;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import com.proyecto.servicios.service.NotificationService;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +47,9 @@ class GestoPagoProductServiceImplTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private ServicioLogoRepository servicioLogoRepository;
 
     @InjectMocks
     private GestoPagoProductServiceImpl productService;
@@ -252,5 +258,23 @@ class GestoPagoProductServiceImplTest {
         assertEquals(2, pagServicios.totalPaginas());
         assertEquals(1, pagServicios.contenido().size());
         assertEquals("CFE", pagServicios.contenido().get(0).servicio());
+    }
+
+    @Test
+    @DisplayName("Debe devolver logo desde PostgreSQL sin invocar getServiceLogo externo cuando ya existe en BD")
+    void getServiceLogo_existenteEnBd_noConsultaGestoPago() {
+        byte[] logoGuardado = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 1, 2, 3};
+        ServicioLogoEntity entity = new ServicioLogoEntity();
+        entity.setIdServicio(2284);
+        entity.setNombreServicio("ABIB");
+        entity.setContentType("image/png");
+        entity.setLogoData(logoGuardado);
+
+        when(servicioLogoRepository.findById(2284)).thenReturn(Optional.of(entity));
+
+        byte[] resultado = productService.getServiceLogo(2284, "ABIB");
+
+        assertArrayEquals(logoGuardado, resultado);
+        verify(productClient, never()).getServiceLogo(anyString(), any());
     }
 }

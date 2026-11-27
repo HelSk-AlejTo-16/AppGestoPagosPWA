@@ -48,4 +48,6 @@ public interface ClienteRepository extends JpaRepository<Cliente, UUID>, JpaSpec
     Page<Cliente> findAllByCreadoEnGreaterThanEqualAndCreadoEnLessThanOrderByCreadoEnDesc(
             OffsetDateTime desde, OffsetDateTime hasta, Pageable pageable
     );
+
+    long countByActivo(boolean activo);
 }

@@ -42,4 +42,7 @@ public interface CuentaBancariaRepository extends JpaRepository<CuentaBancaria, 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE CuentaBancaria c SET c.saldo = c.saldo + :monto WHERE c.idBancaria = :idBancaria")
     int abonarSaldo(@Param("idBancaria") UUID idBancaria, @Param("monto") BigDecimal monto);
+
+    @Query("SELECT COALESCE(SUM(c.saldo), 0) FROM CuentaBancaria c")
+    BigDecimal sumarSaldoTotal();
 }
